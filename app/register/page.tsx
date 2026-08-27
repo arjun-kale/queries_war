@@ -28,7 +28,11 @@ export default function RegisterPage() {
       // A new registration always replaces any stale registration left on this device.
       window.localStorage.setItem(PARTICIPANT_KEY, participantId);
       window.localStorage.setItem(PARTICIPANT_TOKEN_KEY, participantToken);
-      window.location.assign("/contest");
+      if (Date.now() < contest.startTime) {
+        window.location.assign("/waiting");
+      } else {
+        window.location.assign("/contest");
+      }
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Could not register.");
       setIsSubmitting(false);
