@@ -26,7 +26,7 @@ export default function ContestPage() {
   const serverTime = useQuery(api.contests.serverTime);
   const submitAnswer = useMutation(api.submissions.submit);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [queryText, setQueryText] = useState("SELECT *\nFROM products\nLIMIT 10;");
+  const [queryText, setQueryText] = useState("");
   const [result, setResult] = useState<QueryResult>();
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
   const [remaining, setRemaining] = useState<number>();
@@ -85,7 +85,7 @@ export default function ContestPage() {
 
   function selectQuestion(index: number) {
     setCurrentIndex(index);
-    setQueryText("SELECT *\nFROM products\nLIMIT 10;");
+    setQueryText("");
     setResult(undefined);
   }
 
