@@ -25,11 +25,16 @@ export default defineSchema({
     promptMarkdown: v.string(),
     seedDataSql: v.string(),
     expectedResultHash: v.string(),
+    testCases: v.optional(v.array(v.object({
+      seedDataSql: v.string(),
+      expectedResultHash: v.string(),
+    }))),
     points: v.number(),
   }).index("by_contest", ["contestId"]),
 
   participants: defineTable({
     contestId: v.id("contests"),
+    participantToken: v.optional(v.string()),
     name: v.string(),
     email: v.string(),
     startedAt: v.optional(v.number()),

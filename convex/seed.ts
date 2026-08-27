@@ -34,6 +34,7 @@ type Seed = {
   promptMarkdown: string;
   seedDataSql: string;
   expectedResultHash: string;
+  testCases?: Array<{ seedDataSql: string; expectedResultHash: string }>;
   points: number;
 };
 
@@ -50,7 +51,7 @@ const questions: Seed[] = [
   { order: 1, difficulty: "easy", title: "Browse the premiere shelf", points: 10, promptMarkdown: "List every title with title, release year, and rating. Sort by release year descending, then title ascending.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: catalogSql, expectedResultHash: "f1fa032c1872a751e459b1d04eb84d776f0cce201142fea9cab30b4f0e076413" },
   { order: 2, difficulty: "easy", title: "Find acclaimed anime", points: 10, promptMarkdown: "Find Anime titles rated at least 8.5. Return title and rating, highest rating first.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: catalogSql, expectedResultHash: "9a6d0154eb971762c6802e9ba699fbe8ea6a9b5110c3cdf70fbd5f53f6b479cc" },
   { order: 3, difficulty: "easy", title: "Top three ratings", points: 10, promptMarkdown: "Return the three highest-rated titles with title and rating.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: catalogSql, expectedResultHash: "f5c471a95e8a4c7f95e622f025343794a70694b187b921c9cfb725ccf42de1e7" },
-  { order: 4, difficulty: "easy", title: "Home-country viewers", points: 10, promptMarkdown: "List users from India, returning name and country alphabetically by name.\n\nSchema: users(id, name, country)", seedDataSql: `-- Correct query: SELECT name, country FROM users WHERE country = 'India' ORDER BY name;\n-- Expected rows: ('Asha Nair','India'), ('Leo Martins','India')\n${usersSql}`, expectedResultHash: "73e0c96037256a53f671fb05f0b1b0f2a338e105620d85255e058805e3fa58e2" },
+  { order: 4, difficulty: "easy", title: "Home-country viewers", points: 10, promptMarkdown: "List users from India, returning name and country alphabetically by name.\n\nSchema: users(id, name, country)", seedDataSql: `-- Correct query: SELECT name, country FROM users WHERE country = 'India' ORDER BY name;\n-- Expected rows: ('Asha Nair','India'), ('Leo Martins','India')\n${usersSql}`, expectedResultHash: "73e0c96037256a53f671fb05f0b1b0f2a338e105620d85255e058805e3fa58e2", testCases: [{ seedDataSql: usersSql, expectedResultHash: "73e0c96037256a53f671fb05f0b1b0f2a338e105620d85255e058805e3fa58e2" }, { seedDataSql: `${usersSql}\nINSERT INTO users VALUES (7,'Zara Khan','India');`, expectedResultHash: "129d2abc8cf763477ca2413e4b8efdd2f4527a0c95ad96e078e53ce1e5717f01" }] },
   { order: 5, difficulty: "easy", title: "Completed watch minutes", points: 10, promptMarkdown: "Count completed watch records and sum their minutes. Return completed_watch_count and total_minutes.\n\nSchema: watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT COUNT(*) AS completed_watch_count, SUM(minutes_watched) AS total_minutes FROM watch_history WHERE completed = 1;\n-- Expected row: (8,825)\n${historySql}`, expectedResultHash: "da8002f578dca53a03e779e192872dcdb0cc57458c16a2b2c3ff3f9f23b44c65" },
   { order: 6, difficulty: "medium", title: "Name the completed watches", points: 20, promptMarkdown: "Show each completed watch with the user's name, title id, and minutes watched. Use an INNER JOIN and preserve watch record order.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT u.name AS user_name, wh.title_id, wh.minutes_watched FROM users u INNER JOIN watch_history wh ON wh.user_id = u.id WHERE wh.completed = 1 ORDER BY wh.id;\n-- Expected rows: ('Asha Nair',1,95), ('Kenji Sato',5,100), ('Mira Chen',2,130), ('Mira Chen',6,110), ('Leo Martins',8,90), ('Sofia Costa',4,100), ('Omar Haddad',1,125), ('Kenji Sato',2,75)\n${usersSql}\n${historySql}`, expectedResultHash: "d32aa8f3f0634b6fdcb6ac79f7be1c27e7d9baf222c11af5d315446c9bd4e94b" },
   { order: 7, difficulty: "medium", title: "Viewers and their history", points: 20, promptMarkdown: "List every user and their number of watch records, including users with none. Return name and watch_count ordered by user id. Use a LEFT JOIN.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT u.name, COUNT(wh.id) AS watch_count FROM users u LEFT JOIN watch_history wh ON wh.user_id = u.id GROUP BY u.id, u.name ORDER BY u.id;\n-- Expected rows: ('Asha Nair',2), ('Kenji Sato',3), ('Mira Chen',2), ('Leo Martins',2), ('Sofia Costa',1), ('Omar Haddad',2)\n${usersSql}\n${historySql}`, expectedResultHash: "4cf7487c02f4a523dad1100a9c697bb2746bcddb7f6a6d140be182f1a61d24d1" },
@@ -79,6 +80,10 @@ export const seed = internalMutation({
         ...question,
         contestId,
         seedDataSql: sanitizeSeedSql(question.seedDataSql),
+        testCases: question.testCases?.map((testCase) => ({
+          ...testCase,
+          seedDataSql: sanitizeSeedSql(testCase.seedDataSql),
+        })),
       });
     }
     return { contestId, created: questions.length, replaced: oldQuestions.length > 0 };

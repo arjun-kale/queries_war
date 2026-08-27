@@ -7,12 +7,13 @@ import { sql } from "@codemirror/lang-sql";
 import CodeMirror from "@uiw/react-codemirror";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { runQuery, type QueryResult } from "@/lib/sqlRunner";
+import { runQuery, runQueryAgainstFixtures, type QueryFixture, type QueryResult } from "@/lib/sqlRunner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const PARTICIPANT_KEY = "queries-war-participant-id";
+const PARTICIPANT_TOKEN_KEY = "queries-war-participant-token";
 type Status = "unattempted" | "correct" | "wrong";
 
 export default function ContestPage() {
@@ -21,7 +22,11 @@ export default function ContestPage() {
     const stored = window.localStorage.getItem(PARTICIPANT_KEY);
     return stored ? (stored as Id<"participants">) : undefined;
   });
-  const participant = useQuery(api.participants.get, participantId ? { participantId } : "skip");
+  const [participantToken] = useState<string | undefined>(() => {
+    if (typeof window === "undefined") return undefined;
+    return window.localStorage.getItem(PARTICIPANT_TOKEN_KEY) ?? undefined;
+  });
+  const participant = useQuery(api.participants.get, participantId && participantToken ? { participantId, participantToken } : "skip");
   const contestData = useQuery(api.contests.getActive);
   const serverTime = useQuery(api.contests.serverTime);
   const submitAnswer = useMutation(api.submissions.submit);
@@ -35,11 +40,14 @@ export default function ContestPage() {
   const redirecting = useRef(false);
   const questions = contestData?.questions ?? [];
   const question = questions[currentIndex];
+  const fixtures: QueryFixture[] = question
+    ? question.testCases ?? [{ seedDataSql: question.seedDataSql, expectedResultHash: question.expectedResultHash }]
+    : [];
   const clockOffset = useRef(0);
 
   useEffect(() => {
-    if (!participantId) window.location.replace("/register");
-  }, [participantId]);
+    if (!participantId || !participantToken) window.location.replace("/register");
+  }, [participantId, participantToken]);
 
   useEffect(() => {
     // localStorage can outlive a Convex database reset or a previous contest.
@@ -48,6 +56,7 @@ export default function ContestPage() {
     if (participant === null && participantId && !redirecting.current) {
       redirecting.current = true;
       window.localStorage.removeItem(PARTICIPANT_KEY);
+      window.localStorage.removeItem(PARTICIPANT_TOKEN_KEY);
       window.location.replace("/register");
     }
   }, [participant, participantId]);
@@ -78,7 +87,7 @@ export default function ContestPage() {
   async function executeQuery() {
     if (!question) return;
     setIsRunning(true);
-    const nextResult = await runQuery(question.seedDataSql, queryText);
+    const nextResult = await runQuery(fixtures[0].seedDataSql, queryText);
     setResult(nextResult);
     setIsRunning(false);
   }
@@ -92,16 +101,18 @@ export default function ContestPage() {
   async function handleSubmit() {
     if (!question || !participantId) return;
     setIsSubmitting(true);
-    const nextResult = await runQuery(question.seedDataSql, queryText);
+    const judged = await runQueryAgainstFixtures(fixtures, queryText);
+    const nextResult = judged.results[0];
     setResult(nextResult);
-    if (!nextResult.success || !nextResult.resultHash) {
+    if (!judged.success || !nextResult?.resultHash) {
       setIsSubmitting(false);
       return;
     }
     try {
-      const isCorrect = nextResult.resultHash === question.expectedResultHash;
+      const isCorrect = judged.passed;
       const isFinal = currentIndex === questions.length - 1;
-      await submitAnswer({ participantId, questionId: question._id, submittedQuery: queryText, isCorrect, pointsAwarded: isCorrect ? question.points : 0, isFinal });
+      if (!participantToken) throw new Error("Participant session is missing.");
+      await submitAnswer({ participantId, participantToken, questionId: question._id, submittedQuery: queryText, isCorrect, pointsAwarded: isCorrect ? question.points : 0, isFinal });
       setStatuses((current) => ({ ...current, [question._id]: isCorrect ? "correct" : "wrong" }));
       if (isFinal) window.location.replace("/contest/submitted");
       else selectQuestion(currentIndex + 1);
@@ -126,7 +137,7 @@ export default function ContestPage() {
       <Card className="h-fit"><CardHeader className="pb-3"><CardTitle className="text-sm">Questions <span className="text-muted-foreground">{questions.length}/15</span></CardTitle></CardHeader><CardContent className="grid grid-cols-5 gap-2 md:grid-cols-3">{questions.map((item, index) => { const status = statuses[item._id] ?? "unattempted"; return <button key={item._id} onClick={() => selectQuestion(index)} className={`relative flex size-11 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${index === currentIndex ? "border-primary bg-primary text-primary-foreground" : status === "correct" ? "border-primary/30 bg-primary/10 text-primary" : status === "wrong" ? "border-destructive/30 bg-destructive/10 text-destructive" : "bg-background hover:bg-muted"}`} aria-label={`Question ${index + 1}, ${status}`}>{index + 1}{status === "correct" && <Check className="absolute -right-1 -top-1 size-3.5 rounded-full bg-background" />}{status === "wrong" && <X className="absolute -right-1 -top-1 size-3.5 rounded-full bg-background" />}</button>; })}</CardContent></Card>
       <section className="grid min-w-0 gap-5">
         <Card><CardHeader className="gap-3"><div className="flex flex-wrap items-center gap-2"><Badge variant={question.difficulty === "hard" ? "destructive" : question.difficulty === "medium" ? "secondary" : "outline"}>{question.difficulty}</Badge><span className="text-xs text-muted-foreground">Question {question.order} · {question.points} points</span></div><CardTitle className="font-heading text-2xl">{question.title}</CardTitle></CardHeader><CardContent><div className="max-h-56 overflow-y-auto whitespace-pre-wrap leading-7 text-muted-foreground">{question.promptMarkdown}</div></CardContent></Card>
-        <Card className="overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b bg-zinc-950 py-3 text-white"><CardTitle className="font-mono text-sm">query.sql</CardTitle><Badge variant="outline" className="border-zinc-700 text-zinc-300">SQLite</Badge></CardHeader><CardContent className="p-0"><CodeMirror value={queryText} onChange={setQueryText} extensions={[sql()]} minHeight="260px" theme="dark" className="max-h-[430px] overflow-auto font-mono text-sm" basicSetup={{ lineNumbers: true, foldGutter: true }} /></CardContent><div className="flex flex-wrap gap-2 border-t p-4"><Button variant="secondary" onClick={executeQuery} disabled={isRunning || isSubmitting}><Play />{isRunning ? "Running…" : "Run query"}</Button><Button onClick={handleSubmit} disabled={isSubmitting || isRunning}><Send />{isSubmitting ? "Submitting…" : "Submit answer"}</Button></div></Card>
+        <Card className="overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b bg-zinc-950 py-3 text-white"><CardTitle className="font-mono text-sm">query.sql</CardTitle><Badge variant="outline" className="border-zinc-700 text-zinc-300">SQLite</Badge></CardHeader><CardContent className="p-0"><CodeMirror value={queryText} onChange={setQueryText} extensions={[sql()]} minHeight="260px" theme="dark" className="max-h-107.5 overflow-auto font-mono text-sm" basicSetup={{ lineNumbers: true, foldGutter: true }} /></CardContent><div className="flex flex-wrap gap-2 border-t p-4"><Button variant="secondary" onClick={executeQuery} disabled={isRunning || isSubmitting}><Play />{isRunning ? "Running…" : "Run query"}</Button><Button onClick={handleSubmit} disabled={isSubmitting || isRunning}><Send />{isSubmitting ? "Submitting…" : "Submit answer"}</Button></div></Card>
         {result && <Card><CardHeader className="py-4"><CardTitle className="flex items-center gap-2 text-sm">{result.success ? <><Check className="text-primary" />Query result</> : <><CircleAlert className="text-destructive" />Query error</>}</CardTitle></CardHeader><CardContent className="overflow-auto pb-5">{result.error ? <p className="rounded-md bg-destructive/10 p-3 text-destructive">{result.error}</p> : result.rows && result.rows.length > 0 ? <table className="min-w-full text-left text-xs"><thead><tr>{Object.keys(result.rows[0]).map((key) => <th key={key} className="border-b px-3 py-2 font-semibold">{key}</th>)}</tr></thead><tbody>{result.rows.map((row, index) => <tr key={index} className="even:bg-muted/50">{Object.values(row).map((value, cellIndex) => <td key={cellIndex} className="whitespace-nowrap border-b px-3 py-2 font-mono">{String(value ?? "NULL")}</td>)}</tr>)}</tbody></table> : <p className="text-muted-foreground">Query returned no rows.</p>}</CardContent></Card>}
       </section>
     </div>

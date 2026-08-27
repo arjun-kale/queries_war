@@ -4,6 +4,7 @@ import { v } from "convex/values";
 export const submit = mutation({
   args: {
     participantId: v.id("participants"),
+    participantToken: v.string(),
     questionId: v.id("questions"),
     submittedQuery: v.string(),
     isCorrect: v.boolean(),
@@ -13,7 +14,7 @@ export const submit = mutation({
   returns: v.object({ submissionId: v.id("submissions"), totalScore: v.number() }),
   handler: async (ctx, args) => {
     const participant = await ctx.db.get("participants", args.participantId);
-    if (!participant) throw new Error("Participant not found.");
+    if (!participant || participant.participantToken !== args.participantToken) throw new Error("Participant session is invalid.");
     if (participant.finishedAt !== undefined) {
       throw new Error("This contest has already been submitted.");
     }
@@ -26,7 +27,16 @@ export const submit = mutation({
     }
 
     const submittedAt = Date.now();
-    if (submittedAt > contest.endTime) throw new Error("The contest time has ended.");
+    const deadline = Math.min(
+      participant.startedAt
+        ? participant.startedAt + contest.durationSeconds * 1000
+        : contest.endTime,
+      contest.endTime,
+    );
+    if (!contest.isActive || submittedAt < contest.startTime || submittedAt > deadline) {
+      throw new Error("The contest time has ended or has not started.");
+    }
+    if (args.submittedQuery.length > 20_000) throw new Error("Query is too long.");
 
     const previous = await ctx.db
       .query("submissions")

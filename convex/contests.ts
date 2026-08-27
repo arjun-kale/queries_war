@@ -23,6 +23,10 @@ const questionValidator = v.object({
   promptMarkdown: v.string(),
   seedDataSql: v.string(),
   expectedResultHash: v.string(),
+  testCases: v.optional(v.array(v.object({
+    seedDataSql: v.string(),
+    expectedResultHash: v.string(),
+  }))),
   points: v.number(),
 });
 
@@ -41,7 +45,7 @@ async function copyQuestionsIfEmpty(ctx: MutationCtx, contestId: Id<"contests">)
     const questions = await ctx.db.query("questions").withIndex("by_contest", (q) => q.eq("contestId", source._id)).take(100);
     if (questions.length === 0) continue;
     for (const question of questions) {
-      await ctx.db.insert("questions", { contestId, order: question.order, difficulty: question.difficulty, title: question.title, promptMarkdown: question.promptMarkdown, seedDataSql: sanitizeSeedSql(question.seedDataSql), expectedResultHash: question.expectedResultHash, points: question.points });
+      await ctx.db.insert("questions", { contestId, order: question.order, difficulty: question.difficulty, title: question.title, promptMarkdown: question.promptMarkdown, seedDataSql: sanitizeSeedSql(question.seedDataSql), expectedResultHash: question.expectedResultHash, testCases: question.testCases?.map((testCase) => ({ ...testCase, seedDataSql: sanitizeSeedSql(testCase.seedDataSql) })), points: question.points });
     }
     return;
   }
@@ -90,6 +94,7 @@ export const getActive = query({
       questions: questions.map((question) => ({
         ...question,
         seedDataSql: sanitizeSeedSql(question.seedDataSql),
+        testCases: question.testCases?.map((testCase) => ({ ...testCase, seedDataSql: sanitizeSeedSql(testCase.seedDataSql) })),
       })),
     };
   },

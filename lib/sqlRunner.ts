@@ -11,6 +11,15 @@ export type QueryResult = {
   resultHash?: string;
 };
 
+export type QueryFixture = {
+  seedDataSql: string;
+  expectedResultHash: string;
+};
+
+export type FixtureResult = QueryResult & {
+  fixtureIndex: number;
+};
+
 let sqlJsPromise: ReturnType<typeof initSqlJs> | undefined;
 
 function loadSqlJs() {
@@ -110,4 +119,30 @@ export async function runQuery(
     if (timeoutId) clearTimeout(timeoutId);
     database?.close();
   }
+}
+
+/** Runs a query against every contest fixture and passes only if all pass. */
+export async function runQueryAgainstFixtures(
+  fixtures: QueryFixture[],
+  userQuery: string,
+): Promise<{ success: boolean; passed: boolean; results: FixtureResult[]; error?: string }> {
+  const results: FixtureResult[] = [];
+
+  for (const [fixtureIndex, fixture] of fixtures.entries()) {
+    const result = await runQuery(fixture.seedDataSql, userQuery);
+    const fixtureResult = { ...result, fixtureIndex };
+    results.push(fixtureResult);
+
+    if (!result.success) {
+      return { success: false, passed: false, results, error: result.error };
+    }
+  }
+
+  return {
+    success: true,
+    passed: results.every(
+      (result, index) => result.resultHash === fixtures[index].expectedResultHash,
+    ),
+    results,
+  };
 }

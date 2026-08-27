@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const PARTICIPANT_KEY = "queries-war-participant-id";
+const PARTICIPANT_TOKEN_KEY = "queries-war-participant-token";
 
 export default function RegisterPage() {
   const contest = useQuery(api.contests.getForRegistration);
@@ -23,9 +24,10 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       if (!contest) throw new Error("Registration is not open yet.");
-      const participantId = await createParticipant({ contestId: contest._id, name, email });
+      const { participantId, participantToken } = await createParticipant({ contestId: contest._id, name, email });
       // A new registration always replaces any stale registration left on this device.
       window.localStorage.setItem(PARTICIPANT_KEY, participantId);
+      window.localStorage.setItem(PARTICIPANT_TOKEN_KEY, participantToken);
       window.location.assign("/contest");
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Could not register.");
