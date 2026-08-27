@@ -158,3 +158,59 @@ export const recordEvent = mutation({
     return null;
   },
 });
+
+export const mySubmissions = query({
+  args: { participantId: v.id("participants"), participantToken: v.string() },
+  returns: v.array(
+    v.object({
+      _id: v.id("submissions"),
+      questionId: v.id("questions"),
+      questionOrder: v.number(),
+      questionTitle: v.string(),
+      difficulty: v.string(),
+      points: v.number(),
+      submittedQuery: v.string(),
+      isCorrect: v.boolean(),
+      pointsAwarded: v.number(),
+      attemptNumber: v.number(),
+      submittedAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const participant = await ctx.db.get("participants", args.participantId);
+    if (!participant || participant.participantToken !== args.participantToken) {
+      return [];
+    }
+
+    const submissions = await ctx.db
+      .query("submissions")
+      .withIndex("by_participant", (q) => q.eq("participantId", args.participantId))
+      .collect();
+
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("by_contest", (q) => q.eq("contestId", participant.contestId))
+      .collect();
+
+    const questionMap = new Map(questions.map((q) => [q._id, q]));
+
+    return submissions
+      .map((sub) => {
+        const question = questionMap.get(sub.questionId);
+        return {
+          _id: sub._id,
+          questionId: sub.questionId,
+          questionOrder: question?.order ?? 0,
+          questionTitle: question?.title ?? "Question",
+          difficulty: question?.difficulty ?? "easy",
+          points: question?.points ?? 10,
+          submittedQuery: sub.submittedQuery,
+          isCorrect: sub.isCorrect,
+          pointsAwarded: sub.pointsAwarded,
+          attemptNumber: sub.attemptNumber,
+          submittedAt: sub.submittedAt,
+        };
+      })
+      .sort((a, b) => a.questionOrder - b.questionOrder || a.submittedAt - b.submittedAt);
+  },
+});

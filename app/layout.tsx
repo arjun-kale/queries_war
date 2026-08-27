@@ -5,6 +5,8 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 
+import { ToastProvider } from "@/components/ui/toast";
+
 const sourceSans3Heading = Source_Sans_3({subsets:['latin'],variable:'--font-heading'});
 
 const ibmPlexSans = IBM_Plex_Sans({subsets:['latin'],variable:'--font-sans'})
@@ -27,7 +29,9 @@ export default function RootLayout({
     >
       <body>
         <ConvexClientProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </ThemeProvider>
         </ConvexClientProvider>
       </body>
     </html>

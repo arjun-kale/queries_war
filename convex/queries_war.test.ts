@@ -305,4 +305,73 @@ describe("Queries War - Core Test Suite", () => {
     expect(updatedContestB?.isActive).toBe(true);
     expect(updatedContestA?.isActive).toBe(false);
   });
+
+  test("participants.mySubmissions returns participant submissions with question metadata", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    const contestId = await t.run(async (ctx) => {
+      return await ctx.db.insert("contests", {
+        title: "Submissions Test Contest",
+        startTime: now - 1000,
+        endTime: now + 3600_000,
+        durationSeconds: 3600,
+        isActive: true,
+        leaderboardVisible: true,
+      });
+    });
+
+    const questionId = await t.run(async (ctx) => {
+      return await ctx.db.insert("questions", {
+        contestId,
+        order: 1,
+        difficulty: "easy",
+        title: "Test Q1",
+        promptMarkdown: "prompt",
+        seedDataSql: "CREATE TABLE t(a INT);",
+        expectedResultHash: "hash123",
+        points: 10,
+      });
+    });
+
+    const { participantId, participantToken } = await t.mutation(
+      api.participants.create,
+      {
+        contestId,
+        name: "Contestant 1",
+        email: "contestant1@test.com",
+      },
+    );
+
+    // Record a submission
+    await t.mutation(internal.submissionStore.recordSubmission, {
+      participantId,
+      questionId,
+      submittedQuery: "SELECT * FROM t;",
+      isCorrect: true,
+      pointsAwarded: 10,
+      isFinal: false,
+      submittedAt: now,
+    });
+
+    // Query with valid token
+    const mySubs = await t.query(api.participants.mySubmissions, {
+      participantId,
+      participantToken,
+    });
+
+    expect(mySubs).toHaveLength(1);
+    expect(mySubs[0].questionTitle).toBe("Test Q1");
+    expect(mySubs[0].questionOrder).toBe(1);
+    expect(mySubs[0].pointsAwarded).toBe(10);
+    expect(mySubs[0].isCorrect).toBe(true);
+    expect(mySubs[0].attemptNumber).toBe(1);
+
+    // Query with invalid token returns empty list
+    const unauthorizedSubs = await t.query(api.participants.mySubmissions, {
+      participantId,
+      participantToken: "wrong-token",
+    });
+    expect(unauthorizedSubs).toEqual([]);
+  });
 });

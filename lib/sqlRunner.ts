@@ -142,3 +142,48 @@ export async function runQueryAgainstFixtures(
     results,
   };
 }
+
+export type TableSchema = {
+  tableName: string;
+  columns: string[];
+  sampleRows: Record<string, SqlValue>[];
+};
+
+/** Introspects tables and sample rows from seed SQL for previewing schema in the UI */
+export async function introspectSchema(seedSql: string): Promise<TableSchema[]> {
+  let database: Database | undefined;
+  try {
+    const SQL = await loadSqlJs();
+    database = new SQL.Database();
+    database.exec(seedSql);
+
+    const tablesQuery = database.exec(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';",
+    )[0];
+    if (!tablesQuery || !tablesQuery.values) return [];
+
+    const tables: TableSchema[] = [];
+    for (const val of tablesQuery.values) {
+      const tableName = String(val[0]);
+      const sampleRes = database.exec(`SELECT * FROM "${tableName}" LIMIT 5;`)[0];
+      if (sampleRes) {
+        const columns = sampleRes.columns;
+        const sampleRows = sampleRes.values.map((values) =>
+          Object.fromEntries(
+            columns.map((col, idx) => [col, values[idx] ?? null]),
+          ),
+        ) as Record<string, SqlValue>[];
+        tables.push({ tableName, columns, sampleRows });
+      } else {
+        const pragma = database.exec(`PRAGMA table_info("${tableName}");`)[0];
+        const columns = pragma ? pragma.values.map((v) => String(v[1])) : [];
+        tables.push({ tableName, columns, sampleRows: [] });
+      }
+    }
+    return tables;
+  } catch {
+    return [];
+  } finally {
+    database?.close();
+  }
+}

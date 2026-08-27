@@ -8,7 +8,16 @@ import { LeaderboardTable } from "@/components/LeaderboardTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { useState } from "react";
+import type { Id } from "@/convex/_generated/dataModel";
+
+const PARTICIPANT_KEY = "queries-war-participant-id";
+
 export default function LeaderboardPage() {
+  const [participantId] = useState<Id<"participants"> | undefined>(() => {
+    if (typeof window === "undefined") return undefined;
+    return (localStorage.getItem(PARTICIPANT_KEY) as Id<"participants">) || undefined;
+  });
   const contest = useQuery(api.contests.getActive);
 
   if (contest === undefined) return <State message="Loading leaderboard…" />;
@@ -66,7 +75,10 @@ export default function LeaderboardPage() {
                 </p>
               </div>
             ) : (
-              <LeaderboardTable contestId={contest.contest._id} />
+              <LeaderboardTable
+                contestId={contest.contest._id}
+                participantId={participantId}
+              />
             )}
           </CardContent>
         </Card>

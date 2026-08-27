@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
@@ -11,6 +11,8 @@ import {
   Play,
   RotateCcw,
   Send,
+  ShieldAlert,
+  Sparkles,
   Trophy,
   XCircle,
 } from "lucide-react";
@@ -25,6 +27,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ContestTimer } from "@/components/contest/ContestTimer";
 import { QuestionSidebar, type QuestionStatus } from "@/components/contest/QuestionSidebar";
 import { ResultTable, type FixtureSummary } from "@/components/contest/ResultTable";
+import { SchemaDrawer } from "@/components/contest/SchemaDrawer";
+import { useToast } from "@/components/ui/toast";
 
 const PARTICIPANT_KEY = "queries-war-participant-id";
 const PARTICIPANT_TOKEN_KEY = "queries-war-participant-token";
@@ -38,6 +42,8 @@ interface SubmissionFeedback {
 }
 
 export default function ContestPage() {
+  const { toast } = useToast();
+
   const [participantId] = useState<Id<"participants"> | undefined>(() => {
     if (typeof window === "undefined") return undefined;
     const stored = window.localStorage.getItem(PARTICIPANT_KEY);
@@ -54,6 +60,10 @@ export default function ContestPage() {
   );
   const contestData = useQuery(api.contests.getActive);
   const serverTime = useQuery(api.contests.serverTime);
+  const mySubmissions = useQuery(
+    api.participants.mySubmissions,
+    participantId && participantToken ? { participantId, participantToken } : "skip",
+  );
   const submitAnswer = useAction(api.submissions.submit);
   const recordEvent = useMutation(api.participants.recordEvent);
 
@@ -71,10 +81,11 @@ export default function ContestPage() {
   const [result, setResult] = useState<QueryResult>();
   const [fixtureSummaries, setFixtureSummaries] = useState<FixtureSummary[]>();
   const [submissionFeedback, setSubmissionFeedback] = useState<SubmissionFeedback | null>(null);
-  const [statuses, setStatuses] = useState<Record<string, QuestionStatus>>({});
+  const [localStatuses, setLocalStatuses] = useState<Record<string, QuestionStatus>>({});
   const [remaining, setRemaining] = useState<number>();
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dismissIntegrityBanner, setDismissIntegrityBanner] = useState(false);
   const redirecting = useRef(false);
   const clockOffset = useRef(0);
 
@@ -87,6 +98,22 @@ export default function ContestPage() {
     : [];
 
   const queryText = (question ? drafts[question._id] : undefined) ?? "";
+
+  // Question statuses (and the header's "solved" count) are derived from the
+  // server's submission history, with in-session local updates layered on
+  // top for instant feedback. `localStatuses` alone starts empty on every
+  // mount/refresh, so without the server-derived base a page reload would
+  // make solved questions look unattempted again even though the score is
+  // unaffected.
+  const statuses: Record<string, QuestionStatus> = useMemo(() => {
+    const serverStatuses: Record<string, QuestionStatus> = {};
+    if (mySubmissions) {
+      for (const sub of mySubmissions) {
+        serverStatuses[sub.questionId] = sub.isCorrect ? "correct" : "wrong";
+      }
+    }
+    return { ...serverStatuses, ...localStatuses };
+  }, [mySubmissions, localStatuses]);
 
   function handleQueryChange(val: string) {
     if (question && participantId) {
@@ -126,6 +153,7 @@ export default function ContestPage() {
       window.location.replace("/register");
     }
   }, [participant, participantId]);
+
 
   useEffect(() => {
     if (!contestData?.contest || serverTime === undefined) return;
@@ -172,6 +200,11 @@ export default function ContestPage() {
         if (now - lastTabSwitchRef.current >= 3000) {
           lastTabSwitchRef.current = now;
           void recordEvent({ participantId, participantToken, event: "tabSwitch" });
+          toast({
+            title: "Tab switch logged",
+            description: "Leaving the contest window has been recorded for integrity review.",
+            variant: "warning",
+          });
         }
       }
     };
@@ -180,34 +213,18 @@ export default function ContestPage() {
       event.preventDefault();
     };
 
-    // Note: Browser client-side keyboard/event blocks are deterrence only, not a hard security boundary.
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === "F12" ||
-        ((event.ctrlKey || event.metaKey) &&
-          event.shiftKey &&
-          ["I", "i", "J", "j", "C", "c"].includes(event.key)) ||
-        ((event.ctrlKey || event.metaKey) &&
-          (event.key === "u" || event.key === "U"))
-      ) {
-        event.preventDefault();
-      }
-    };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("contextmenu", handlePrevent);
     document.addEventListener("copy", handlePrevent);
     document.addEventListener("cut", handlePrevent);
-    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("contextmenu", handlePrevent);
       document.removeEventListener("copy", handlePrevent);
       document.removeEventListener("cut", handlePrevent);
-      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [participantId, participantToken, recordEvent]);
+  }, [participantId, participantToken, recordEvent, toast]);
 
   function handleEditorPaste(event: React.ClipboardEvent) {
     event.preventDefault();
@@ -215,6 +232,11 @@ export default function ContestPage() {
     if (participantId && participantToken && now - lastPasteAttemptRef.current >= 2000) {
       lastPasteAttemptRef.current = now;
       void recordEvent({ participantId, participantToken, event: "pasteAttempt" });
+      toast({
+        title: "Pasting is disabled",
+        description: "Code pasting is disabled during the contest to ensure integrity.",
+        variant: "warning",
+      });
     }
   }
 
@@ -244,6 +266,37 @@ export default function ContestPage() {
     setIsRunning(false);
   }
 
+  // Keyboard shortcut: Ctrl+Enter / Cmd+Enter runs query preview (Submit stays explicit click)
+  const executeQueryRef = useRef(executeQuery);
+  useEffect(() => {
+    executeQueryRef.current = executeQuery;
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void executeQueryRef.current();
+        return;
+      }
+
+      // Devtools deterrence
+      if (
+        event.key === "F12" ||
+        ((event.ctrlKey || event.metaKey) &&
+          event.shiftKey &&
+          ["I", "i", "J", "j", "C", "c"].includes(event.key)) ||
+        ((event.ctrlKey || event.metaKey) &&
+          (event.key === "u" || event.key === "U"))
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   async function handleSubmit() {
     if (!question || !participantId) return;
     setIsSubmitting(true);
@@ -270,7 +323,7 @@ export default function ContestPage() {
 
       const isLast = currentIndex === questions.length - 1;
 
-      setStatuses((current) => ({
+      setLocalStatuses((current) => ({
         ...current,
         [question._id]: submissionResult.isCorrect ? "correct" : "wrong",
       }));
@@ -298,7 +351,7 @@ export default function ContestPage() {
   if (!participantId || participant === undefined || contestData === undefined) return <LoadingState />;
   if (!participant) return <LoadingState message="Your registration expired. Returning to registration…" />;
   
-  // Handled ended contest gracefully
+  // Handle ended contest gracefully
   if (!contestData || !contestData.contest.isActive) {
     return (
       <main className="flex min-h-svh items-center justify-center p-4 bg-muted/30">
@@ -329,6 +382,8 @@ export default function ContestPage() {
 
   if (!question) return <LoadingState message="Questions are being prepared." />;
 
+  const solvedCount = Object.values(statuses).filter((s) => s === "correct").length;
+
   return (
     <main className="min-h-svh bg-muted/30 text-sm pb-12">
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/95 px-4 backdrop-blur md:px-8">
@@ -337,6 +392,16 @@ export default function ContestPage() {
           <p className="text-xs text-muted-foreground">{participant.name} · SQL arena</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Live Header Score Badge */}
+          <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3.5 py-1 text-xs font-semibold text-primary">
+            <Sparkles className="size-3.5" />
+            <span>{participant.totalScore ?? 0} pts</span>
+            <span className="text-muted-foreground/60">·</span>
+            <span className="font-normal text-muted-foreground">
+              {solvedCount}/{questions.length} solved
+            </span>
+          </div>
+
           <Button variant="outline" size="sm" asChild>
             <Link href="/contest/leaderboard" target="_blank" rel="noopener noreferrer">
               <Trophy className="size-4 mr-1.5 text-primary" />
@@ -349,13 +414,36 @@ export default function ContestPage() {
 
       <div className="mx-auto grid max-w-7xl gap-5 p-4 md:grid-cols-[220px_minmax(0,1fr)] md:p-8">
         <QuestionSidebar
-          questions={questions}
+          questions={questions.map((q) => ({
+            _id: q._id,
+            order: q.order,
+            difficulty: q.difficulty,
+            points: q.points,
+          }))}
           currentIndex={currentIndex}
           statuses={statuses}
           onSelectQuestion={selectQuestion}
         />
 
         <section className="grid min-w-0 gap-5">
+          {/* Contest Integrity Notice */}
+          {!dismissIntegrityBanner && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  <strong>Contest Integrity Active:</strong> Tab switching, devtools, and copy-paste are monitored and recorded for contest integrity review.
+                </span>
+              </div>
+              <button
+                onClick={() => setDismissIntegrityBanner(true)}
+                className="text-muted-foreground hover:text-foreground text-[11px] underline shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           <Card>
             <CardHeader className="gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -382,6 +470,9 @@ export default function ContestPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Interactive Schema & Sample Data Drawer */}
+          <SchemaDrawer seedSql={question.seedDataSql} />
 
           {/* Submission Feedback Banner */}
           {submissionFeedback && (
@@ -482,19 +573,28 @@ export default function ContestPage() {
                 basicSetup={{ lineNumbers: true, foldGutter: true }}
               />
             </CardContent>
-            <div className="flex flex-wrap gap-2 border-t p-4">
-              <Button
-                variant="secondary"
-                onClick={executeQuery}
-                disabled={isRunning || isSubmitting}
-              >
-                <Play className="size-4 mr-1.5" />
-                {isRunning ? "Running preview…" : "Run query"}
-              </Button>
-              <Button onClick={handleSubmit} disabled={isSubmitting || isRunning}>
-                <Send className="size-4 mr-1.5" />
-                {isSubmitting ? "Grading…" : "Submit answer"}
-              </Button>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t p-4">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={executeQuery}
+                  disabled={isRunning || isSubmitting}
+                >
+                  <Play className="size-4 mr-1.5" />
+                  {isRunning ? "Running preview…" : "Run query"}
+                  <kbd className="ml-2 hidden sm:inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground border">
+                    Ctrl+↵
+                  </kbd>
+                </Button>
+                <Button onClick={handleSubmit} disabled={isSubmitting || isRunning}>
+                  <Send className="size-4 mr-1.5" />
+                  {isSubmitting ? "Grading…" : "Submit answer"}
+                </Button>
+              </div>
+
+              <span className="text-[11px] text-muted-foreground hidden md:inline">
+                Press <kbd className="font-mono font-semibold">Ctrl+Enter</kbd> to preview query
+              </span>
             </div>
           </Card>
 

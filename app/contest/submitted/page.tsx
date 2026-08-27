@@ -3,11 +3,22 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "convex/react";
-import { CheckCircle2, Home, LoaderCircle, Sparkles, Trophy, Clock, Code2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Home,
+  LoaderCircle,
+  Sparkles,
+  Trophy,
+  Clock,
+  Code2,
+  XCircle,
+} from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 const PARTICIPANT_KEY = "queries-war-participant-id";
 const PARTICIPANT_TOKEN_KEY = "queries-war-participant-token";
@@ -30,6 +41,13 @@ export default function ContestSubmittedPage() {
       : "skip",
   );
 
+  const submissions = useQuery(
+    api.participants.mySubmissions,
+    participantId && participantToken
+      ? { participantId, participantToken }
+      : "skip",
+  );
+
   const durationSeconds =
     participant?.startedAt && participant?.finishedAt
       ? Math.max(0, Math.round((participant.finishedAt - participant.startedAt) / 1000))
@@ -42,15 +60,15 @@ export default function ContestSubmittedPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/30 px-4 py-12">
-      <div className="w-full max-w-lg space-y-6">
+    <main className="flex min-h-svh flex-col items-center justify-center bg-muted/30 px-4 py-12">
+      <div className="w-full max-w-xl space-y-6">
         <Card className="text-center overflow-hidden border-primary/20 shadow-xl shadow-primary/5">
           <div className="bg-primary/5 p-6 border-b">
             <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <CheckCircle2 className="size-8" />
             </div>
             <CardTitle className="font-heading text-3xl font-semibold">
-              Contest Submitted!
+              Contest Finished!
             </CardTitle>
             <CardDescription className="mt-1 text-sm">
               {participant?.name
@@ -112,6 +130,70 @@ export default function ContestSubmittedPage() {
             </div>
           </CardContent>
         </Card>
+
+        {submissions && submissions.length > 0 && (
+          <Card className="text-left">
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-base font-semibold">Question Results Breakdown</CardTitle>
+              <CardDescription className="text-xs">
+                Detailed record of all graded submissions for your session
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 divide-y">
+              {submissions.map((sub) => (
+                <div
+                  key={sub._id}
+                  className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5">
+                      {sub.isCorrect ? (
+                        <CheckCircle2 className="size-5 text-emerald-500" />
+                      ) : (
+                        <XCircle className="size-5 text-destructive" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium leading-none">
+                        Q{sub.questionOrder}. {sub.questionTitle}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] px-1.5 py-0 capitalize",
+                            sub.difficulty === "easy"
+                              ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                              : sub.difficulty === "medium"
+                                ? "border-amber-500/30 text-amber-600 dark:text-amber-400"
+                                : "border-rose-500/30 text-rose-600 dark:text-rose-400",
+                          )}
+                        >
+                          {sub.difficulty}
+                        </Badge>
+                        <span>Attempt #{sub.attemptNumber}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right font-mono">
+                    <span
+                      className={cn(
+                        "text-sm font-bold",
+                        sub.isCorrect ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+                      )}
+                    >
+                      +{sub.pointsAwarded} pts
+                    </span>
+                    <p className="text-[10px] text-muted-foreground">
+                      of {sub.points} max
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </main>
   );
