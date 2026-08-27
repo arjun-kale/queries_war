@@ -13,7 +13,7 @@ const contestValidator = v.object({
   leaderboardVisible: v.boolean(),
 });
 
-const questionValidator = v.object({
+const publicQuestionValidator = v.object({
   _id: v.id("questions"),
   _creationTime: v.number(),
   contestId: v.id("contests"),
@@ -22,10 +22,8 @@ const questionValidator = v.object({
   title: v.string(),
   promptMarkdown: v.string(),
   seedDataSql: v.string(),
-  expectedResultHash: v.string(),
   testCases: v.optional(v.array(v.object({
     seedDataSql: v.string(),
-    expectedResultHash: v.string(),
   }))),
   points: v.number(),
 });
@@ -70,7 +68,7 @@ export const getActive = query({
   args: {},
   returns: v.union(
     v.null(),
-    v.object({ contest: contestValidator, questions: v.array(questionValidator) }),
+    v.object({ contest: contestValidator, questions: v.array(publicQuestionValidator) }),
   ),
   handler: async (ctx) => {
     // Resolve the same contest used by registration. Looking up any active
@@ -92,9 +90,18 @@ export const getActive = query({
     return {
       contest,
       questions: questions.map((question) => ({
-        ...question,
+        _id: question._id,
+        _creationTime: question._creationTime,
+        contestId: question.contestId,
+        order: question.order,
+        difficulty: question.difficulty,
+        title: question.title,
+        promptMarkdown: question.promptMarkdown,
         seedDataSql: sanitizeSeedSql(question.seedDataSql),
-        testCases: question.testCases?.map((testCase) => ({ ...testCase, seedDataSql: sanitizeSeedSql(testCase.seedDataSql) })),
+        testCases: question.testCases?.map((testCase) => ({
+          seedDataSql: sanitizeSeedSql(testCase.seedDataSql),
+        })),
+        points: question.points,
       })),
     };
   },

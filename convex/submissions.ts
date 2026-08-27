@@ -1,73 +1,88 @@
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+"use node";
 
-export const submit = mutation({
+import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import { executeAndGrade } from "./grading";
+
+export const submit = action({
   args: {
     participantId: v.id("participants"),
     participantToken: v.string(),
     questionId: v.id("questions"),
     submittedQuery: v.string(),
-    resultHashes: v.array(v.string()),
   },
-  returns: v.object({ submissionId: v.id("submissions"), totalScore: v.number() }),
+  returns: v.object({
+    submissionId: v.id("submissions"),
+    totalScore: v.number(),
+    isCorrect: v.boolean(),
+  }),
   handler: async (ctx, args) => {
-    const participant = await ctx.db.get("participants", args.participantId);
-    if (!participant || participant.participantToken !== args.participantToken) throw new Error("Participant session is invalid.");
-    if (participant.finishedAt !== undefined) {
-      throw new Error("This contest has already been submitted.");
+    if (args.submittedQuery.length > 20_000) {
+      throw new Error("Query is too long.");
     }
 
-    const contest = await ctx.db.get("contests", participant.contestId);
-    if (!contest) throw new Error("Contest not found.");
-    const question = await ctx.db.get("questions", args.questionId);
-    if (!question || question.contestId !== participant.contestId) {
-      throw new Error("That question does not belong to this contest.");
-    }
-
-    const submittedAt = Date.now();
-    const deadline = Math.min(
-      participant.startedAt
-        ? participant.startedAt + contest.durationSeconds * 1000
-        : contest.endTime,
-      contest.endTime,
+    const { question, isFinal }: {
+      question: {
+        _id: Id<"questions">;
+        points: number;
+        order: number;
+        seedDataSql: string;
+        expectedResultHash: string;
+        testCases?: Array<{ seedDataSql: string; expectedResultHash: string }>;
+      };
+      isFinal: boolean;
+    } = await ctx.runMutation(
+      internal.submissionStore.validateAndGetQuestion,
+      {
+        participantId: args.participantId,
+        participantToken: args.participantToken,
+        questionId: args.questionId,
+      },
     );
-    if (!contest.isActive || submittedAt < contest.startTime || submittedAt > deadline) {
-      throw new Error("The contest time has ended or has not started.");
+
+    const fixtures =
+      question.testCases && question.testCases.length > 0
+        ? question.testCases
+        : [
+            {
+              seedDataSql: question.seedDataSql,
+              expectedResultHash: question.expectedResultHash,
+            },
+          ];
+
+    let isCorrect = true;
+    for (const fixture of fixtures) {
+      const gradeResult = await executeAndGrade(
+        fixture.seedDataSql,
+        args.submittedQuery,
+        fixture.expectedResultHash,
+      );
+      if (!gradeResult.isCorrect) {
+        isCorrect = false;
+        break;
+      }
     }
-    if (args.submittedQuery.length > 20_000) throw new Error("Query is too long.");
 
-    const contestQuestions = await ctx.db
-      .query("questions")
-      .withIndex("by_contest", (q) => q.eq("contestId", participant.contestId))
-      .collect();
-    const expectedHashes = question.testCases?.map((testCase) => testCase.expectedResultHash) ?? [question.expectedResultHash];
-    const isCorrect = expectedHashes.length === args.resultHashes.length && expectedHashes.every((hash, index) => hash === args.resultHashes[index]);
-
-    const previous = await ctx.db
-      .query("submissions")
-      .withIndex("by_participant", (q) => q.eq("participantId", args.participantId))
-      .take(1_000);
-    const attemptNumber = previous.filter((item) => item.questionId === args.questionId).length + 1;
     const pointsAwarded = isCorrect ? question.points : 0;
+    const submittedAt = Date.now();
 
-    const submissionId = await ctx.db.insert("submissions", {
-      participantId: args.participantId,
-      questionId: args.questionId,
-      submittedQuery: args.submittedQuery,
-      isCorrect,
-      pointsAwarded,
-      submittedAt,
-      attemptNumber,
-    });
-
-    const isFinal = question.order === Math.max(...contestQuestions.map((item) => item.order));
-    if (isFinal) {
-      await ctx.db.patch("participants", args.participantId, { finishedAt: Date.now() });
-    }
+    const result: { submissionId: Id<"submissions">; totalScore: number } =
+      await ctx.runMutation(internal.submissionStore.recordSubmission, {
+        participantId: args.participantId,
+        questionId: args.questionId,
+        submittedQuery: args.submittedQuery,
+        isCorrect,
+        pointsAwarded,
+        isFinal,
+        submittedAt,
+      });
 
     return {
-      submissionId,
-      totalScore: previous.reduce((total, item) => total + item.pointsAwarded, 0) + pointsAwarded,
+      submissionId: result.submissionId,
+      totalScore: result.totalScore,
+      isCorrect,
     };
   },
 });

@@ -10,9 +10,12 @@
 
 import type * as admin from "../admin.js";
 import type * as contests from "../contests.js";
+import type * as grading from "../grading.js";
 import type * as leaderboard from "../leaderboard.js";
 import type * as participants from "../participants.js";
 import type * as seed from "../seed.js";
+import type * as sqlWasmBinary from "../sqlWasmBinary.js";
+import type * as submissionStore from "../submissionStore.js";
 import type * as submissions from "../submissions.js";
 
 import type {
@@ -24,9 +27,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   contests: typeof contests;
+  grading: typeof grading;
   leaderboard: typeof leaderboard;
   participants: typeof participants;
   seed: typeof seed;
+  sqlWasmBinary: typeof sqlWasmBinary;
+  submissionStore: typeof submissionStore;
   submissions: typeof submissions;
 }>;
 

@@ -46,11 +46,7 @@ function stableValue(value: unknown): unknown {
 }
 
 function normalizedRows(rows: Record<string, SqlValue>[]) {
-  return rows
-    .map((row) => stableValue(row))
-    .sort((left, right) =>
-      JSON.stringify(left).localeCompare(JSON.stringify(right)),
-    );
+  return rows.map((row) => stableValue(row));
 }
 
 async function hashResult(rows: Record<string, SqlValue>[]) {

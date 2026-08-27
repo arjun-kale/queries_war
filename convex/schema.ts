@@ -42,6 +42,9 @@ export default defineSchema({
     tabSwitchCount: v.number(),
     pasteAttemptCount: v.number(),
     isDisqualified: v.optional(v.boolean()),
+    totalScore: v.optional(v.number()),
+    submissionCount: v.optional(v.number()),
+    lastSubmittedAt: v.optional(v.number()),
   }).index("by_contest", ["contestId"]).index("by_contest_email", ["contestId", "email"]),
 
   submissions: defineTable({
@@ -60,4 +63,11 @@ export default defineSchema({
     token: v.string(),
     expiresAt: v.number(),
   }).index("by_token", ["token"]),
+
+  rateLimits: defineTable({
+    key: v.string(),
+    attempts: v.number(),
+    lastAttemptAt: v.number(),
+    lockedUntil: v.optional(v.number()),
+  }).index("by_key", ["key"]),
 });

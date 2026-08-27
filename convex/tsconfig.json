@@ -20,6 +20,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["./**/*"],
+  "include": ["./**/*", "../lib/sql.js.d.ts"],
   "exclude": ["./_generated"]
 }
