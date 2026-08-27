@@ -1,9 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ExternalLink, LoaderCircle, LogOut, Play, Plus, Shield, Square, ToggleLeft, ToggleRight, UserX, UserCheck } from "lucide-react";
+import {
+  Calendar,
+  Clock,
+  ExternalLink,
+  LoaderCircle,
+  LogOut,
+  Play,
+  Plus,
+  Save,
+  Shield,
+  Square,
+  ToggleLeft,
+  ToggleRight,
+  UserCheck,
+  UserX,
+} from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +72,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (validSession === false) {
       localStorage.removeItem(ADMIN_KEY);
-      location.replace("/admin/login");
+      location.replace("/admin/login?expired=1");
     }
   }, [validSession]);
 
@@ -72,8 +87,15 @@ export default function AdminPage() {
 
   async function toggleContest() {
     if (!contest) return;
+    const isStopping = contest.isActive;
+    const promptMessage = isStopping
+      ? `Are you sure you want to TURN OFF "${contest.title}"? Active participants will be stopped from submitting new queries.`
+      : `Are you sure you want to START "${contest.title}" now? Any other active contest will be deactivated.`;
+
+    if (!window.confirm(promptMessage)) return;
+
     try {
-      if (contest.isActive) {
+      if (isStopping) {
         await update({
           adminToken: token!,
           contestId: contest._id,
@@ -84,12 +106,38 @@ export default function AdminPage() {
           isActive: false,
           leaderboardVisible: contest.leaderboardVisible,
         });
+        setMessage("Contest turned off.");
       } else {
         await start({ adminToken: token!, contestId: contest._id });
+        setMessage("Contest started live.");
       }
-      setMessage(contest.isActive ? "Contest turned off." : "Contest started now.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not update contest.");
+    }
+  }
+
+  async function handleSaveContest(title: string, durationMins: number, startTimeIso: string) {
+    if (!contest || !token) return;
+    setMessage(undefined);
+
+    try {
+      const parsedStart = new Date(startTimeIso).getTime();
+      const parsedDurationSec = Math.max(60, durationMins * 60);
+      const parsedEnd = parsedStart + parsedDurationSec * 1000;
+
+      await update({
+        adminToken: token,
+        contestId: contest._id,
+        title: title.trim(),
+        startTime: parsedStart,
+        endTime: parsedEnd,
+        durationSeconds: parsedDurationSec,
+        isActive: contest.isActive,
+        leaderboardVisible: contest.leaderboardVisible,
+      });
+      setMessage("Contest configuration saved.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not save changes.");
     }
   }
 
@@ -107,8 +155,18 @@ export default function AdminPage() {
     }
   }
 
-  async function handleToggleDisqualify(participantId: Id<"participants">, currentDisqualified: boolean) {
+  async function handleToggleDisqualify(
+    participantId: Id<"participants">,
+    currentDisqualified: boolean,
+    participantName: string,
+  ) {
     if (!token) return;
+    const actionLabel = currentDisqualified
+      ? `lift disqualification for ${participantName}`
+      : `DISQUALIFY ${participantName}`;
+
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
+
     try {
       await setDisqualified({
         adminToken: token,
@@ -127,12 +185,12 @@ export default function AdminPage() {
       const id = await create({
         adminToken: token!,
         title: "New SQL Contest",
-        startTime: now,
-        endTime: now + 315360000000,
+        startTime: now + 3600_000, // default scheduled 1 hour in future
+        endTime: now + 3600_000 + 3600_000,
         durationSeconds: 3600,
       });
       setSelected(id);
-      setMessage("Contest created. Start it when ready.");
+      setMessage("New contest created. Configure start time and launch when ready.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not create contest.");
     }
@@ -145,7 +203,7 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-svh bg-muted/30">
+    <main className="min-h-svh bg-muted/30 pb-12">
       <header className="border-b bg-background">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -162,6 +220,7 @@ export default function AdminPage() {
           </Button>
         </div>
       </header>
+
       <div className="mx-auto max-w-7xl space-y-6 p-5 md:p-8">
         <div className="grid gap-4 sm:grid-cols-4">
           {[
@@ -178,6 +237,7 @@ export default function AdminPage() {
             </Card>
           ))}
         </div>
+
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
           <Card className="h-fit">
             <CardHeader>
@@ -198,59 +258,41 @@ export default function AdminPage() {
                 <button
                   key={item._id}
                   onClick={() => setSelected(item._id)}
-                  className={`w-full rounded-lg border p-3 text-left ${
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
                     item._id === contest?._id
                       ? "border-primary bg-primary/5"
                       : "hover:bg-muted"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{item.title}</span>
+                    <span className="font-medium truncate">{item.title}</span>
                     {item.isActive ? (
-                      <ToggleRight className="size-5 text-primary" />
+                      <ToggleRight className="size-5 text-primary shrink-0" />
                     ) : (
-                      <ToggleLeft className="size-5 text-muted-foreground" />
+                      <ToggleLeft className="size-5 text-muted-foreground shrink-0" />
                     )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {item.isActive ? "Live" : "Off"}
+                    {item.isActive ? "Live" : "Inactive"} ·{" "}
+                    {new Date(item.startTime).toLocaleDateString()}
                   </p>
                 </button>
               ))}
             </CardContent>
           </Card>
+
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Contest control</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-wrap items-center gap-4">
-                <Button size="lg" onClick={toggleContest}>
-                  {contest?.isActive ? (
-                    <>
-                      <Square /> Turn off contest
-                    </>
-                  ) : (
-                    <>
-                      <Play /> Start contest
-                    </>
-                  )}
-                </Button>
-                <label className="flex items-center gap-3 rounded-lg border p-3 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={contest?.leaderboardVisible ?? true}
-                    onChange={(event) =>
-                      handleLeaderboardToggle(event.target.checked)
-                    }
-                  />
-                  Show leaderboard
-                </label>
-                {message && (
-                  <p className="text-sm text-muted-foreground">{message}</p>
-                )}
-              </CardContent>
-            </Card>
+            {contest && (
+              <EditContestCard
+                key={contest._id}
+                contest={contest}
+                onSave={handleSaveContest}
+                onToggleContest={toggleContest}
+                onLeaderboardToggle={handleLeaderboardToggle}
+                message={message}
+              />
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Live scores & anti-cheat monitoring</CardTitle>
@@ -322,7 +364,13 @@ export default function AdminPage() {
                               <Button
                                 variant={row.isDisqualified ? "outline" : "destructive"}
                                 size="sm"
-                                onClick={() => handleToggleDisqualify(row.participantId, row.isDisqualified)}
+                                onClick={() =>
+                                  handleToggleDisqualify(
+                                    row.participantId,
+                                    row.isDisqualified,
+                                    row.name,
+                                  )
+                                }
                               >
                                 {row.isDisqualified ? (
                                   <>
@@ -350,3 +398,141 @@ export default function AdminPage() {
   );
 }
 
+interface ContestLike {
+  _id: Id<"contests">;
+  title: string;
+  startTime: number;
+  endTime: number;
+  durationSeconds: number;
+  isActive: boolean;
+  leaderboardVisible: boolean;
+}
+
+function EditContestCard({
+  contest,
+  onSave,
+  onToggleContest,
+  onLeaderboardToggle,
+  message,
+}: {
+  contest: ContestLike;
+  onSave: (title: string, durationMins: number, startTimeIso: string) => Promise<void>;
+  onToggleContest: () => void;
+  onLeaderboardToggle: (checked: boolean) => void;
+  message?: string;
+}) {
+  const [title, setTitle] = useState(contest.title);
+  const [durationMins, setDurationMins] = useState(Math.round(contest.durationSeconds / 60));
+  const [startTime, setStartTime] = useState(() => {
+    const date = new Date(contest.startTime);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await onSave(title, durationMins, startTime);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Contest configuration & control</CardTitle>
+          <Badge variant={contest.isActive ? "default" : "secondary"}>
+            {contest.isActive ? "Live Now" : "Inactive"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-3">
+          <label className="grid gap-1.5 text-xs font-medium sm:col-span-3">
+            Title
+            <input
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-9 rounded-md border bg-background px-3 font-normal text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium">
+            Duration (minutes)
+            <div className="relative">
+              <input
+                required
+                type="number"
+                min="1"
+                max="1440"
+                value={durationMins}
+                onChange={(e) => setDurationMins(Number(e.target.value))}
+                className="h-9 w-full rounded-md border bg-background pl-8 pr-3 font-normal text-sm"
+              />
+              <Clock className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            </div>
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium sm:col-span-2">
+            Scheduled Start Time
+            <div className="relative">
+              <input
+                required
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background pl-8 pr-3 font-normal text-sm"
+              />
+              <Calendar className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            </div>
+          </label>
+          <div className="sm:col-span-3 flex flex-wrap items-center justify-between gap-3 pt-2">
+            <Button type="submit" size="sm" variant="secondary" disabled={isSaving}>
+              <Save className="size-4 mr-1.5" />
+              {isSaving ? "Saving…" : "Save configuration"}
+            </Button>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant={contest.isActive ? "destructive" : "default"}
+                size="sm"
+                onClick={onToggleContest}
+              >
+                {contest.isActive ? (
+                  <>
+                    <Square className="size-4 mr-1.5" /> Turn off contest
+                  </>
+                ) : (
+                  <>
+                    <Play className="size-4 mr-1.5" /> Start contest now
+                  </>
+                )}
+              </Button>
+              <label className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs cursor-pointer bg-background">
+                <input
+                  type="checkbox"
+                  checked={contest.leaderboardVisible ?? true}
+                  onChange={(event) =>
+                    onLeaderboardToggle(event.target.checked)
+                  }
+                />
+                Show leaderboard
+              </label>
+            </div>
+          </div>
+        </form>
+
+        {message && (
+          <p className="rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+            {message}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

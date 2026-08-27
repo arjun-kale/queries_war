@@ -48,6 +48,13 @@ export default function ParticipantDetailPage({
   const setDisqualified = useMutation(api.admin.setDisqualified);
   const [actionMessage, setActionMessage] = useState<string>();
 
+  useEffect(() => {
+    if (validSession === false) {
+      localStorage.removeItem(ADMIN_KEY);
+      location.replace("/admin/login?expired=1");
+    }
+  }, [validSession]);
+
   if (!token || validSession !== true || participant === undefined || submissions === undefined) {
     return (
       <main className="flex min-h-svh items-center justify-center gap-2 text-muted-foreground">
@@ -72,6 +79,14 @@ export default function ParticipantDetailPage({
 
   async function handleToggleDisqualify() {
     if (!token || !participant) return;
+    const actionLabel = participant.isDisqualified
+      ? `lift the disqualification for ${participant.name}`
+      : `DISQUALIFY ${participant.name} from the contest`;
+
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) {
+      return;
+    }
+
     try {
       await setDisqualified({
         adminToken: token,
