@@ -26,6 +26,12 @@ const questionValidator = v.object({
   points: v.number(),
 });
 
+function sanitizeSeedSql(seedSql: string) {
+  return seedSql
+    .replace(/^\s*-- (?:Correct query|Expected row(?:s)?):.*(?:\r?\n|$)/gm, "")
+    .trim();
+}
+
 async function copyQuestionsIfEmpty(ctx: MutationCtx, contestId: Id<"contests">) {
   const existing = await ctx.db.query("questions").withIndex("by_contest", (q) => q.eq("contestId", contestId)).take(1);
   if (existing.length > 0) return;
@@ -35,7 +41,7 @@ async function copyQuestionsIfEmpty(ctx: MutationCtx, contestId: Id<"contests">)
     const questions = await ctx.db.query("questions").withIndex("by_contest", (q) => q.eq("contestId", source._id)).take(100);
     if (questions.length === 0) continue;
     for (const question of questions) {
-      await ctx.db.insert("questions", { contestId, order: question.order, difficulty: question.difficulty, title: question.title, promptMarkdown: question.promptMarkdown, seedDataSql: question.seedDataSql, expectedResultHash: question.expectedResultHash, points: question.points });
+      await ctx.db.insert("questions", { contestId, order: question.order, difficulty: question.difficulty, title: question.title, promptMarkdown: question.promptMarkdown, seedDataSql: sanitizeSeedSql(question.seedDataSql), expectedResultHash: question.expectedResultHash, points: question.points });
     }
     return;
   }
@@ -79,7 +85,13 @@ export const getActive = query({
       .order("asc")
       .take(15);
 
-    return { contest, questions };
+    return {
+      contest,
+      questions: questions.map((question) => ({
+        ...question,
+        seedDataSql: sanitizeSeedSql(question.seedDataSql),
+      })),
+    };
   },
 });
 
