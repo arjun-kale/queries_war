@@ -158,6 +158,30 @@ export const adminUpdate = mutation({
   },
 });
 
+export const adminStart = mutation({
+  args: { adminToken: v.string(), contestId: v.id("contests") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("adminSessions")
+      .withIndex("by_token", (q) => q.eq("token", args.adminToken))
+      .unique();
+    if (!session || session.expiresAt < Date.now()) throw new Error("Admin session expired.");
+
+    const contest = await ctx.db.get("contests", args.contestId);
+    if (!contest) throw new Error("Contest not found.");
+    await copyQuestionsIfEmpty(ctx, contest._id);
+
+    const startTime = Date.now();
+    await ctx.db.patch("contests", contest._id, {
+      startTime,
+      endTime: startTime + contest.durationSeconds * 1000,
+      isActive: true,
+    });
+    return null;
+  },
+});
+
 export const adminCreate = mutation({
   args: {
     adminToken: v.string(),

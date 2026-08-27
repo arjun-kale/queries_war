@@ -42,7 +42,7 @@ export default defineSchema({
     tabSwitchCount: v.number(),
     pasteAttemptCount: v.number(),
     isDisqualified: v.optional(v.boolean()),
-  }).index("by_contest", ["contestId"]),
+  }).index("by_contest", ["contestId"]).index("by_contest_email", ["contestId", "email"]),
 
   submissions: defineTable({
     participantId: v.id("participants"),

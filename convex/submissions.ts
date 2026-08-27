@@ -7,9 +7,7 @@ export const submit = mutation({
     participantToken: v.string(),
     questionId: v.id("questions"),
     submittedQuery: v.string(),
-    isCorrect: v.boolean(),
-    pointsAwarded: v.number(),
-    isFinal: v.optional(v.boolean()),
+    resultHashes: v.array(v.string()),
   },
   returns: v.object({ submissionId: v.id("submissions"), totalScore: v.number() }),
   handler: async (ctx, args) => {
@@ -38,26 +36,32 @@ export const submit = mutation({
     }
     if (args.submittedQuery.length > 20_000) throw new Error("Query is too long.");
 
+    const contestQuestions = await ctx.db
+      .query("questions")
+      .withIndex("by_contest", (q) => q.eq("contestId", participant.contestId))
+      .collect();
+    const expectedHashes = question.testCases?.map((testCase) => testCase.expectedResultHash) ?? [question.expectedResultHash];
+    const isCorrect = expectedHashes.length === args.resultHashes.length && expectedHashes.every((hash, index) => hash === args.resultHashes[index]);
+
     const previous = await ctx.db
       .query("submissions")
       .withIndex("by_participant", (q) => q.eq("participantId", args.participantId))
       .take(1_000);
     const attemptNumber = previous.filter((item) => item.questionId === args.questionId).length + 1;
-    const pointsAwarded = args.isCorrect
-      ? Math.min(Math.max(args.pointsAwarded, 0), question.points)
-      : 0;
+    const pointsAwarded = isCorrect ? question.points : 0;
 
     const submissionId = await ctx.db.insert("submissions", {
       participantId: args.participantId,
       questionId: args.questionId,
       submittedQuery: args.submittedQuery,
-      isCorrect: args.isCorrect,
+      isCorrect,
       pointsAwarded,
       submittedAt,
       attemptNumber,
     });
 
-    if (args.isFinal === true) {
+    const isFinal = question.order === Math.max(...contestQuestions.map((item) => item.order));
+    if (isFinal) {
       await ctx.db.patch("participants", args.participantId, { finishedAt: Date.now() });
     }
 

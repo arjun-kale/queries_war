@@ -20,6 +20,11 @@ export const create = mutation({
     const email = args.email.trim().toLowerCase();
     if (!name || !email) throw new Error("Name and email are required.");
     if (name.length > 100 || email.length > 200) throw new Error("Name or email is too long.");
+    const existing = await ctx.db
+      .query("participants")
+      .withIndex("by_contest_email", (q) => q.eq("contestId", args.contestId).eq("email", email))
+      .unique();
+    if (existing) throw new Error("This email is already registered for the contest.");
 
     const participantToken = crypto.randomUUID();
     const participantId = await ctx.db.insert("participants", {
@@ -56,7 +61,35 @@ export const get = query({
   handler: async (ctx, args) => {
     const participant = await ctx.db.get("participants", args.participantId);
     if (!participant || participant.participantToken !== args.participantToken) return null;
-    const { participantToken: _, ...publicParticipant } = participant;
-    return publicParticipant;
+    return {
+      _id: participant._id,
+      _creationTime: participant._creationTime,
+      contestId: participant.contestId,
+      name: participant.name,
+      email: participant.email,
+      startedAt: participant.startedAt,
+      finishedAt: participant.finishedAt,
+      tabSwitchCount: participant.tabSwitchCount,
+      pasteAttemptCount: participant.pasteAttemptCount,
+      isDisqualified: participant.isDisqualified,
+    };
+  },
+});
+
+export const recordEvent = mutation({
+  args: {
+    participantId: v.id("participants"),
+    participantToken: v.string(),
+    event: v.union(v.literal("tabSwitch"), v.literal("pasteAttempt")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const participant = await ctx.db.get("participants", args.participantId);
+    if (!participant || participant.participantToken !== args.participantToken || participant.finishedAt !== undefined) return null;
+
+    await ctx.db.patch("participants", args.participantId, args.event === "tabSwitch"
+      ? { tabSwitchCount: participant.tabSwitchCount + 1 }
+      : { pasteAttemptCount: participant.pasteAttemptCount + 1 });
+    return null;
   },
 });
