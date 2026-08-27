@@ -254,4 +254,55 @@ describe("Queries War - Core Test Suite", () => {
     const hiddenLeaderboard = await t.query(api.leaderboard.get, { contestId });
     expect(hiddenLeaderboard).toEqual([]);
   });
+
+  test("Starting a new contest enforces single active contest rule", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const adminToken = "test-admin-session-token";
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("adminSessions", {
+        token: adminToken,
+        expiresAt: now + 3600_000,
+      });
+    });
+
+    const contestA = await t.run(async (ctx) => {
+      return await ctx.db.insert("contests", {
+        title: "Contest A",
+        startTime: now - 1000,
+        endTime: now + 3600_000,
+        durationSeconds: 3600,
+        isActive: true,
+        leaderboardVisible: true,
+      });
+    });
+
+    const contestB = await t.run(async (ctx) => {
+      return await ctx.db.insert("contests", {
+        title: "Contest B",
+        startTime: now + 10_000,
+        endTime: now + 3600_000,
+        durationSeconds: 3600,
+        isActive: false,
+        leaderboardVisible: true,
+      });
+    });
+
+    // Start Contest B
+    await t.mutation(api.contests.adminStart, {
+      adminToken,
+      contestId: contestB,
+    });
+
+    const updatedContestA = await t.run(async (ctx) => {
+      return await ctx.db.get("contests", contestA);
+    });
+    const updatedContestB = await t.run(async (ctx) => {
+      return await ctx.db.get("contests", contestB);
+    });
+
+    expect(updatedContestB?.isActive).toBe(true);
+    expect(updatedContestA?.isActive).toBe(false);
+  });
 });

@@ -17,8 +17,19 @@ export const submit = action({
     submissionId: v.id("submissions"),
     totalScore: v.number(),
     isCorrect: v.boolean(),
+    pointsAwarded: v.number(),
+    attemptNumber: v.number(),
   }),
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    submissionId: Id<"submissions">;
+    totalScore: number;
+    isCorrect: boolean;
+    pointsAwarded: number;
+    attemptNumber: number;
+  }> => {
     if (args.submittedQuery.length > 20_000) {
       throw new Error("Query is too long.");
     }
@@ -68,21 +79,26 @@ export const submit = action({
     const pointsAwarded = isCorrect ? question.points : 0;
     const submittedAt = Date.now();
 
-    const result: { submissionId: Id<"submissions">; totalScore: number } =
-      await ctx.runMutation(internal.submissionStore.recordSubmission, {
-        participantId: args.participantId,
-        questionId: args.questionId,
-        submittedQuery: args.submittedQuery,
-        isCorrect,
-        pointsAwarded,
-        isFinal,
-        submittedAt,
-      });
+    const result: {
+      submissionId: Id<"submissions">;
+      totalScore: number;
+      attemptNumber: number;
+    } = await ctx.runMutation(internal.submissionStore.recordSubmission, {
+      participantId: args.participantId,
+      questionId: args.questionId,
+      submittedQuery: args.submittedQuery,
+      isCorrect,
+      pointsAwarded,
+      isFinal,
+      submittedAt,
+    });
 
     return {
       submissionId: result.submissionId,
       totalScore: result.totalScore,
       isCorrect,
+      pointsAwarded,
+      attemptNumber: result.attemptNumber,
     };
   },
 });

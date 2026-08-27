@@ -156,10 +156,25 @@ export const adminUpdate = mutation({
     if (!Number.isFinite(args.startTime) || !Number.isFinite(args.endTime)) throw new Error("Start and end dates are required.");
     if (args.endTime <= args.startTime) throw new Error("End date must be after the start date.");
     if (!Number.isFinite(args.durationSeconds) || args.durationSeconds <= 0) throw new Error("Duration must be greater than zero.");
-    if (args.isActive) await copyQuestionsIfEmpty(ctx, args.contestId);
+    if (args.isActive) {
+      await copyQuestionsIfEmpty(ctx, args.contestId);
+      const activeContests = await ctx.db
+        .query("contests")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .take(50);
+      for (const active of activeContests) {
+        if (active._id !== args.contestId) {
+          await ctx.db.patch("contests", active._id, { isActive: false });
+        }
+      }
+    }
     await ctx.db.patch("contests", args.contestId, {
-      title: args.title.trim(), startTime: args.startTime, endTime: args.endTime,
-      durationSeconds: args.durationSeconds, isActive: args.isActive, leaderboardVisible: args.leaderboardVisible,
+      title: args.title.trim(),
+      startTime: args.startTime,
+      endTime: args.endTime,
+      durationSeconds: args.durationSeconds,
+      isActive: args.isActive,
+      leaderboardVisible: args.leaderboardVisible,
     });
     return null;
   },
@@ -178,6 +193,17 @@ export const adminStart = mutation({
     const contest = await ctx.db.get("contests", args.contestId);
     if (!contest) throw new Error("Contest not found.");
     await copyQuestionsIfEmpty(ctx, contest._id);
+
+    // Deactivate all other contests to ensure single active contest
+    const activeContests = await ctx.db
+      .query("contests")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .take(50);
+    for (const active of activeContests) {
+      if (active._id !== contest._id) {
+        await ctx.db.patch("contests", active._id, { isActive: false });
+      }
+    }
 
     const startTime = Date.now();
     await ctx.db.patch("contests", contest._id, {

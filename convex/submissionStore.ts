@@ -95,6 +95,7 @@ export const recordSubmission = internalMutation({
   returns: v.object({
     submissionId: v.id("submissions"),
     totalScore: v.number(),
+    attemptNumber: v.number(),
   }),
   handler: async (ctx, args) => {
     const participant = await ctx.db.get("participants", args.participantId);
@@ -136,6 +137,7 @@ export const recordSubmission = internalMutation({
     return {
       submissionId,
       totalScore,
+      attemptNumber,
     };
   },
 });
