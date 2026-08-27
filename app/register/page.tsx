@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowRight, LoaderCircle, ShieldCheck } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -17,10 +17,6 @@ export default function RegisterPage() {
   const [error, setError] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (window.localStorage.getItem(PARTICIPANT_KEY)) window.location.replace("/contest");
-  }, []);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(undefined);
@@ -28,6 +24,7 @@ export default function RegisterPage() {
     try {
       if (!contest) throw new Error("Registration is not open yet.");
       const participantId = await createParticipant({ contestId: contest._id, name, email });
+      // A new registration always replaces any stale registration left on this device.
       window.localStorage.setItem(PARTICIPANT_KEY, participantId);
       window.location.assign("/contest");
     } catch (submissionError) {

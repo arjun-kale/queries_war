@@ -42,6 +42,17 @@ export default function ContestPage() {
   }, [participantId]);
 
   useEffect(() => {
+    // localStorage can outlive a Convex database reset or a previous contest.
+    // Treat a missing record as an expired registration and let the contestant
+    // register again instead of leaving them on a dead-end error screen.
+    if (participant === null && participantId && !redirecting.current) {
+      redirecting.current = true;
+      window.localStorage.removeItem(PARTICIPANT_KEY);
+      window.location.replace("/register");
+    }
+  }, [participant, participantId]);
+
+  useEffect(() => {
     if (!participant?.startedAt || !contestData?.contest || serverTime === undefined) return;
     clockOffset.current = serverTime - Date.now();
     const deadline = Math.min(participant.startedAt + contestData.contest.durationSeconds * 1000, contestData.contest.endTime);
@@ -102,8 +113,8 @@ export default function ContestPage() {
   }
 
   if (!participantId || participant === undefined || contestData === undefined) return <LoadingState />;
-  if (!participant) return <LoadingState message="Participant not found. Return to registration to begin again." />;
-  if (!contestData) return <LoadingState message="The contest is not active yet." />;
+  if (!participant) return <LoadingState message="Your registration expired. Returning to registration…" />;
+  if (!contestData) return <LoadingState message="The contest is configured but not active yet. Set isActive to true for Queries War in Convex." />;
   if (!question) return <LoadingState message="Questions are being prepared." />;
 
   return <main className="min-h-svh bg-muted/30 text-sm">

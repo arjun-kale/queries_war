@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Code2, Trophy, Zap } from "lucide-react";
+import { ArrowRight, Code2, Shield, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -11,11 +11,7 @@ export default function Page() {
           <Link href="/" className="font-heading text-xl font-semibold tracking-tight">
             Queries War<span className="text-primary">.</span>
           </Link>
-          <Button variant="ghost" asChild>
-            <Link href="/contest/leaderboard">
-              <Trophy /> Leaderboard
-            </Link>
-          </Button>
+          <Button variant="ghost" size="icon" asChild><Link href="/admin/login" aria-label="Admin login"><Shield /></Link></Button>
         </header>
 
         <section className="grid flex-1 items-center gap-12 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-24">
@@ -32,9 +28,6 @@ export default function Page() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" asChild>
                 <Link href="/register">Enter the contest <ArrowRight /></Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link href="/contest/leaderboard">View leaderboard</Link>
               </Button>
             </div>
             <p className="mt-5 text-sm text-muted-foreground">15 questions · 60 minutes · live scoring</p>

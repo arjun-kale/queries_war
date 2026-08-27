@@ -50,4 +50,9 @@ export default defineSchema({
   })
     .index("by_participant", ["participantId"])
     .index("by_question", ["questionId"]),
+
+  adminSessions: defineTable({
+    token: v.string(),
+    expiresAt: v.number(),
+  }).index("by_token", ["token"]),
 });
