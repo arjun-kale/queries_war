@@ -27,7 +27,10 @@ export default function Page() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" asChild>
-                <Link href="/register">Enter the contest <ArrowRight /></Link>
+                <Link href="/register">Enter the contest <ArrowRight className="ml-1.5" /></Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/contest/leaderboard">Live leaderboard</Link>
               </Button>
             </div>
             <p className="mt-5 text-sm text-muted-foreground">15 questions · 60 minutes · live scoring</p>
