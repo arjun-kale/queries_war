@@ -87,8 +87,38 @@ export default function ContestPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dismissIntegrityBanner, setDismissIntegrityBanner] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const cameraPreviewRef = useRef<HTMLVideoElement>(null);
   const redirecting = useRef(false);
   const clockOffset = useRef(0);
+
+  // Keep the camera visibly on (deterrent only) after the identity-check
+  // photo is taken, instead of turning it off. No further photos or video
+  // are captured from this stream — it only feeds the small live preview.
+  useEffect(() => {
+    if (cameraStream && cameraPreviewRef.current) {
+      cameraPreviewRef.current.srcObject = cameraStream;
+      void cameraPreviewRef.current.play();
+    }
+  }, [cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      cameraStream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [cameraStream]);
+
+  // The contest-ended screen renders on the same page mount (no navigation),
+  // so it wouldn't otherwise trigger the unmount cleanup above. This only
+  // stops the tracks (a side effect); the preview's visibility is derived
+  // from contest state below rather than cleared via setState here.
+  useEffect(() => {
+    if (contestData && !contestData.contest.isActive && cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+    }
+  }, [contestData, cameraStream]);
+
+  const showCameraPreview = Boolean(cameraStream && contestData?.contest.isActive);
 
   const questions = contestData?.questions ?? [];
   const question = questions[currentIndex];
@@ -387,7 +417,11 @@ export default function ContestPage() {
     !participant.identityVerificationSkipped
   ) {
     return (
-      <IdentityVerification participantId={participant._id} participantToken={participantToken} />
+      <IdentityVerification
+        participantId={participant._id}
+        participantToken={participantToken}
+        onStreamHandoff={setCameraStream}
+      />
     );
   }
 
@@ -403,6 +437,20 @@ export default function ContestPage() {
           <p className="text-xs text-muted-foreground">{participant.name} · SQL arena</p>
         </div>
         <div className="flex items-center gap-3">
+          {showCameraPreview && (
+            <div
+              className="relative size-9 shrink-0 overflow-hidden rounded-full border-2 border-primary/40"
+              title="Camera is on — visible for the rest of the contest as an integrity deterrent. Nothing further is captured or uploaded from it."
+            >
+              <video
+                ref={cameraPreviewRef}
+                className="size-full object-cover"
+                muted
+                playsInline
+              />
+              <span className="absolute right-0 top-0 size-2 rounded-full bg-destructive ring-1 ring-background" />
+            </div>
+          )}
           {/* Live Header Score Badge */}
           <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3.5 py-1 text-xs font-semibold text-primary">
             <Sparkles className="size-3.5" />

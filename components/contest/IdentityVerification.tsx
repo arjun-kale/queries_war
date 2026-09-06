@@ -13,9 +13,16 @@ type Status = "idle" | "requesting" | "streaming" | "uploading" | "error";
 export function IdentityVerification({
   participantId,
   participantToken,
+  onStreamHandoff,
 }: {
   participantId: Id<"participants">;
   participantToken: string;
+  /** Called with the live camera stream right after a successful capture, so
+   * the parent can keep it visible as a deterrent for the rest of the
+   * contest instead of the camera turning off. No further photos or video
+   * are captured from it — this only keeps the existing local preview
+   * running. */
+  onStreamHandoff?: (stream: MediaStream) => void;
 }) {
   const generateUploadUrl = useMutation(api.participants.generateIdentityPhotoUploadUrl);
   const saveIdentityPhoto = useMutation(api.participants.saveIdentityPhoto);
@@ -90,7 +97,18 @@ export function IdentityVerification({
       const { storageId } = (await uploadResponse.json()) as { storageId: Id<"_storage"> };
 
       await saveIdentityPhoto({ participantId, participantToken, storageId });
-      stopCamera();
+
+      // Hand the live stream up to the parent instead of stopping it, so the
+      // camera preview stays visible through the rest of the contest. Release
+      // local ownership first so this component's own unmount cleanup
+      // doesn't stop the tracks the parent now holds.
+      const stream = streamRef.current;
+      streamRef.current = null;
+      if (stream && onStreamHandoff) {
+        onStreamHandoff(stream);
+      } else {
+        stream?.getTracks().forEach((track) => track.stop());
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save your photo.");
       setStatus("streaming");
@@ -116,9 +134,11 @@ export function IdentityVerification({
           <CardTitle className="font-heading text-2xl">Quick identity check</CardTitle>
           <CardDescription>
             Before you start, we take a single photo to help confirm the person who registered is
-            the person taking the contest. This is a one-time capture — no ongoing recording.
-            It&apos;s only ever visible to contest administrators, and is used solely as evidence
-            if a dispute comes up. There is no automated face matching.
+            the person taking the contest. Only that one photo is captured and uploaded — it&apos;s
+            only ever visible to contest administrators, and is used solely as evidence if a
+            dispute comes up. There is no automated face matching. Your camera will stay on and
+            visible for the rest of the contest as a deterrent, but nothing further is captured,
+            recorded, or uploaded from it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
