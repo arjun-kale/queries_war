@@ -3,30 +3,6 @@ import { v } from "convex/values";
 
 const CONTEST_TITLE = "Queries War";
 
-const catalogSql = String.raw`CREATE TABLE titles (id INTEGER PRIMARY KEY, title TEXT, type TEXT, release_year INTEGER, genre TEXT, rating REAL);
-INSERT INTO titles VALUES
- (1,'Neon Samurai','Anime',2022,'Action',8.7),(2,'Moonlit Detectives','Movie',2021,'Mystery',8.2),
- (3,'Skybound Academy','Anime',2023,'Fantasy',9.1),(4,'Paper Cranes','Movie',2020,'Drama',7.8),
- (5,'Pixel Raiders','Anime',2024,'Action',8.5),(6,'Last Train Home','Movie',2022,'Drama',8.9),
- (7,'Ocean Signal','Anime',2021,'Sci-Fi',7.5),(8,'Ember City','Anime',2023,'Action',8.0);`;
-
-const usersSql = String.raw`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, country TEXT);
-INSERT INTO users VALUES (1,'Asha Nair','India'),(2,'Kenji Sato','Japan'),(3,'Mira Chen','United States'),(4,'Leo Martins','India'),(5,'Sofia Costa','Brazil'),(6,'Omar Haddad','United Kingdom');`;
-
-const historySql = String.raw`CREATE TABLE watch_history (id INTEGER PRIMARY KEY, user_id INTEGER, title_id INTEGER, minutes_watched INTEGER, progress_percent INTEGER, completed INTEGER, watched_at TEXT);
-INSERT INTO watch_history VALUES
- (1,1,1,95,100,1,'2026-03-01'),(2,1,3,120,60,0,'2026-03-02'),
- (3,2,3,45,40,0,'2026-03-01'),(4,2,5,100,100,1,'2026-03-04'),
- (5,3,2,130,100,1,'2026-03-02'),(6,3,6,110,100,1,'2026-03-05'),
- (7,4,1,60,50,0,'2026-03-03'),(8,4,8,90,100,1,'2026-03-06'),
- (9,5,4,100,100,1,'2026-03-01'),(10,6,7,70,55,0,'2026-03-07'),
- (11,6,1,125,100,1,'2026-03-08'),(12,2,2,75,100,1,'2026-03-09');`;
-
-const reviewsSql = String.raw`CREATE TABLE reviews (id INTEGER PRIMARY KEY, user_id INTEGER, title_id INTEGER, score INTEGER);
-INSERT INTO reviews VALUES
- (1,1,1,9),(2,2,3,10),(3,3,2,8),(4,4,1,8),(5,5,3,9),
- (6,6,5,9),(7,1,6,10),(8,2,6,9),(9,3,5,8),(10,4,8,8),(11,5,2,7),(12,6,4,7);`;
-
 type Seed = {
   order: number;
   difficulty: "easy" | "medium" | "hard";
@@ -38,31 +14,263 @@ type Seed = {
   points: number;
 };
 
-// Keep authoring notes out of the SQL that is sent to contestants. The
-// expected hashes remain the grading key, but the answer and result rows must
-// never be visible in the contest database.
 function sanitizeSeedSql(seedSql: string) {
   return seedSql
     .replace(/^\s*-- (?:Correct query|Expected row(?:s)?):.*(?:\r?\n|$)/gm, "")
     .trim();
 }
 
+// Final question bank — see QUESTION_BANK.md for the authored reference
+// (prompts, correct queries, and hash derivation notes). Every
+// expectedResultHash below was independently re-verified against this
+// project's own grading engine (convex/grading.ts) before being seeded.
 const questions: Seed[] = [
-  { order: 1, difficulty: "easy", title: "Browse the premiere shelf", points: 10, promptMarkdown: "List every title with title, release year, and rating. Sort by release year descending, then title ascending.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: catalogSql, expectedResultHash: "28c873199e582f673778cd76b98e803b7e5eb18e35c9dd86fc465bacac0447ec" },
-  { order: 2, difficulty: "easy", title: "Find acclaimed anime", points: 10, promptMarkdown: "Find Anime titles rated at least 8.5. Return title and rating, highest rating first.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: catalogSql, expectedResultHash: "be46830738ce3690f45ba5e8ba020059ece9e288e7d3c55c3005e8e23787612c" },
-  { order: 3, difficulty: "easy", title: "Top three ratings", points: 10, promptMarkdown: "Return the three highest-rated titles with title and rating.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: catalogSql, expectedResultHash: "81ca4d4fe112453c45272230caa38dcf3100f686a148ddf7c301599ecc8fbe6f" },
-  { order: 4, difficulty: "easy", title: "Home-country viewers", points: 10, promptMarkdown: "List users from India, returning name and country alphabetically by name.\n\nSchema: users(id, name, country)", seedDataSql: `-- Correct query: SELECT name, country FROM users WHERE country = 'India' ORDER BY name;\n-- Expected rows: ('Asha Nair','India'), ('Leo Martins','India')\n${usersSql}`, expectedResultHash: "73e0c96037256a53f671fb05f0b1b0f2a338e105620d85255e058805e3fa58e2" },
-  { order: 5, difficulty: "easy", title: "Completed watch minutes", points: 10, promptMarkdown: "Count completed watch records and sum their minutes. Return completed_watch_count and total_minutes.\n\nSchema: watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT COUNT(*) AS completed_watch_count, SUM(minutes_watched) AS total_minutes FROM watch_history WHERE completed = 1;\n-- Expected row: (8,825)\n${historySql}`, expectedResultHash: "da8002f578dca53a03e779e192872dcdb0cc57458c16a2b2c3ff3f9f23b44c65" },
-  { order: 6, difficulty: "medium", title: "Name the completed watches", points: 20, promptMarkdown: "Show each completed watch with the user's name, title id, and minutes watched. Use an INNER JOIN and preserve watch record order.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT u.name AS user_name, wh.title_id, wh.minutes_watched FROM users u INNER JOIN watch_history wh ON wh.user_id = u.id WHERE wh.completed = 1 ORDER BY wh.id;\n-- Expected rows: ('Asha Nair',1,95), ('Kenji Sato',5,100), ('Mira Chen',2,130), ('Mira Chen',6,110), ('Leo Martins',8,90), ('Sofia Costa',4,100), ('Omar Haddad',1,125), ('Kenji Sato',2,75)\n${usersSql}\n${historySql}`, expectedResultHash: "9ed84f5360881d5390e0920b69a4662a576b0aff9aa32bf97c5fa137755ce287" },
-  { order: 7, difficulty: "medium", title: "Viewers and their history", points: 20, promptMarkdown: "List every user and their number of watch records, including users with none. Return name and watch_count ordered by user id. Use a LEFT JOIN.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT u.name, COUNT(wh.id) AS watch_count FROM users u LEFT JOIN watch_history wh ON wh.user_id = u.id GROUP BY u.id, u.name ORDER BY u.id;\n-- Expected rows: ('Asha Nair',2), ('Kenji Sato',3), ('Mira Chen',2), ('Leo Martins',2), ('Sofia Costa',1), ('Omar Haddad',2)\n${usersSql}\n${historySql}`, expectedResultHash: "1c2d0e2d7c83f7ae30feabb4272f1e866a6671fd47d8fa05b220305e221a9ff4" },
-  { order: 8, difficulty: "medium", title: "Popular catalog entries", points: 20, promptMarkdown: "Find title ids watched at least twice. Return title_id and watch_count, sorted by watch_count descending then title_id. Use GROUP BY and HAVING.\n\nSchema: watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT title_id, COUNT(*) AS watch_count FROM watch_history GROUP BY title_id HAVING COUNT(*) >= 2 ORDER BY watch_count DESC, title_id;\n-- Expected rows: (1,2), (2,2), (3,2)\n${historySql}`, expectedResultHash: "1ccee4f248e0487e06ce573f0d80051da34f06ed0d26c5c5a360cd8a1f9239b0" },
-  { order: 9, difficulty: "medium", title: "Above the catalog average", points: 20, promptMarkdown: "Return titles rated above the average rating of all titles. Include title and rating, highest first. Use a subquery in WHERE.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: `-- Correct query: SELECT title, rating FROM titles WHERE rating > (SELECT AVG(rating) FROM titles) ORDER BY rating DESC;\n-- Expected rows: ('Skybound Academy',9.1), ('Last Train Home',8.9), ('Neon Samurai',8.7), ('Pixel Raiders',8.5)\n${catalogSql}`, expectedResultHash: "b8c1534dcd088893e621d3c8cf4592d208abbfd9807c2b84540bacacb55570fc" },
-  { order: 10, difficulty: "medium", title: "Anime watchers", points: 20, promptMarkdown: "Find users who watched at least one Anime title. Return unique names alphabetically. Use a subquery in WHERE.\n\nSchema: users(id, name, country); titles(id, title, type, release_year, genre, rating); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT name FROM users WHERE id IN (SELECT user_id FROM watch_history WHERE title_id IN (SELECT id FROM titles WHERE type = 'Anime')) ORDER BY name;\n-- Expected rows: ('Asha Nair'), ('Kenji Sato'), ('Leo Martins'), ('Omar Haddad')\n${usersSql}\n${catalogSql}\n${historySql}`, expectedResultHash: "3fc36a32cb834e5466d96566a4e6484ac1afb89ac4000c0ca85855e0793f793d" },
-  { order: 11, difficulty: "hard", title: "Completed minutes by country", points: 30, promptMarkdown: "For completed watches, calculate total minutes by viewer country. Return country and completed_minutes, highest total first.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: SELECT u.country, SUM(wh.minutes_watched) AS completed_minutes FROM users u JOIN watch_history wh ON wh.user_id = u.id WHERE wh.completed = 1 GROUP BY u.country ORDER BY completed_minutes DESC;\n-- Expected rows: ('United States',240), ('Japan',175), ('India',185), ('United Kingdom',125), ('Brazil',100) [exact order: United States, India, Japan, United Kingdom, Brazil by totals 240,185,175,125,100]\n${usersSql}\n${historySql}`, expectedResultHash: "434e999df61fdffee8057fcacf7dd484de04b7ede010c8e1a0d4298cb449e6ef" },
-  { order: 12, difficulty: "hard", title: "Rank by critic score", points: 30, promptMarkdown: "Average each reviewed title's score and rank titles using RANK(), with highest average first. Return title, avg_score, and score_rank.\n\nSchema: titles(id, title, type, release_year, genre, rating); reviews(id, user_id, title_id, score)", seedDataSql: `-- Correct query: SELECT t.title, AVG(r.score) AS avg_score, RANK() OVER (ORDER BY AVG(r.score) DESC) AS score_rank FROM titles t JOIN reviews r ON r.title_id = t.id GROUP BY t.id, t.title ORDER BY score_rank, t.title;\n-- Expected rows: ('Skybound Academy',9.5,1), ('Last Train Home',9.5,1), ('Neon Samurai',8.5,3), ('Pixel Raiders',8.5,3), ('Ember City',8.0,5), ('Moonlit Detectives',7.5,6), ('Paper Cranes',7.0,7)\n${catalogSql}\n${reviewsSql}`, expectedResultHash: "d00f3f5eb0e63b7289a74e7aa398b99ab654e6ea5a8b3c98f7fe3053de6b5b61" },
-  { order: 13, difficulty: "hard", title: "Latest watch per viewer", points: 30, promptMarkdown: "Return each user's latest watch using ROW_NUMBER(). Include name, title_id, and watched_at, ordered by name.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: WITH ranked AS (SELECT u.name, wh.title_id, wh.watched_at, ROW_NUMBER() OVER (PARTITION BY u.id ORDER BY wh.watched_at DESC, wh.id DESC) AS row_num FROM users u JOIN watch_history wh ON wh.user_id = u.id) SELECT name, title_id, watched_at FROM ranked WHERE row_num = 1 ORDER BY name;\n-- Expected rows: ('Asha Nair',3,'2026-03-02'), ('Kenji Sato',2,'2026-03-09'), ('Leo Martins',8,'2026-03-06'), ('Mira Chen',6,'2026-03-05'), ('Omar Haddad',1,'2026-03-08'), ('Sofia Costa',4,'2026-03-01')\n${usersSql}\n${historySql}`, expectedResultHash: "e213c255c1a34f8b7b684116e285bd21cb4d9c34efe2bf8470df9431650a3309" },
-  { order: 14, difficulty: "hard", title: "Genre standouts", points: 30, promptMarkdown: "Find titles rated above the average rating of their own genre. Return title, genre, and rating sorted by rating descending. Use a correlated subquery.\n\nSchema: titles(id, title, type, release_year, genre, rating)", seedDataSql: `-- Correct query: SELECT t.title, t.genre, t.rating FROM titles t WHERE t.rating > (SELECT AVG(t2.rating) FROM titles t2 WHERE t2.genre = t.genre) ORDER BY t.rating DESC;\n-- Expected rows: ('Last Train Home','Drama',8.9), ('Neon Samurai','Action',8.7), ('Pixel Raiders','Action',8.5)\n${catalogSql}`, expectedResultHash: "1d6e4336962e162acdf8d3b683f768b2d33e97b8c6890e3586dd4d8077654a86" },
-  { order: 15, difficulty: "hard", title: "Binge leaderboard", points: 30, promptMarkdown: "Use a CTE to total completed watch minutes per user. Return name and completed_minutes, highest total first.\n\nSchema: users(id, name, country); watch_history(id, user_id, title_id, minutes_watched, progress_percent, completed, watched_at)", seedDataSql: `-- Correct query: WITH completed AS (SELECT user_id, minutes_watched FROM watch_history WHERE completed = 1) SELECT u.name, SUM(c.minutes_watched) AS completed_minutes FROM users u JOIN completed c ON c.user_id = u.id GROUP BY u.id, u.name ORDER BY completed_minutes DESC;\n-- Expected rows: ('Mira Chen',240), ('Kenji Sato',175), ('Omar Haddad',125), ('Sofia Costa',100), ('Asha Nair',95), ('Leo Martins',90)\n${usersSql}\n${historySql}`, expectedResultHash: "4cf1c6479ec94ee7e5fcdf0ff46c96991878c258053f5ebfe09a5af77a68cf50" },
+  {
+    order: 1,
+    difficulty: "easy",
+    title: "Fresh Fruits",
+    points: 10,
+    promptMarkdown:
+      "Return id, name, price, and stock for fruits with stock greater than 50, ordered by stock descending.\n\nSchema: fruits(id, name, price, stock)",
+    seedDataSql: String.raw`CREATE TABLE fruits (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, stock INTEGER);
+INSERT INTO fruits VALUES
+(1,'Apple',120,80),
+(2,'Banana',50,30),
+(3,'Mango',200,65),
+(4,'Grapes',350,20),
+(5,'Orange',100,55);`,
+    expectedResultHash: "7057272919fd2c895078d238091dd950c4fcd381bab94d7f4d2ca38bf678fbf2",
+  },
+  {
+    order: 2,
+    difficulty: "easy",
+    title: "Active Members",
+    points: 10,
+    promptMarkdown:
+      "Return name and city of members where is_active = 1.\n\nSchema: members(id, name, city, is_active)",
+    seedDataSql: String.raw`CREATE TABLE members (id INTEGER PRIMARY KEY, name TEXT, city TEXT, is_active INTEGER);
+INSERT INTO members VALUES
+(1,'Rahul','Pune',1),
+(2,'Sneha','Mumbai',0),
+(3,'Aditya','Pune',1),
+(4,'Kavya','Delhi',1),
+(5,'Meera','Nagpur',0);`,
+    expectedResultHash: "e8ade49d4a552c90db66103456558dc24bcb05ed936e7a76186d12cc5b2c6f9d",
+  },
+  {
+    order: 3,
+    difficulty: "easy",
+    title: "Cheap Books",
+    points: 10,
+    promptMarkdown:
+      "Return title and price of books cheaper than 300, ordered by price ascending.\n\nSchema: books(id, title, author, price)",
+    seedDataSql: String.raw`CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, author TEXT, price INTEGER);
+INSERT INTO books VALUES
+(1,'Dune','Frank Herbert',450),
+(2,'Sapiens','Yuval Noah',350),
+(3,'Atomic Habits','James Clear',280),
+(4,'The Alchemist','Paulo Coelho',199),
+(5,'1984','George Orwell',250);`,
+    expectedResultHash: "5a29926ddddb4416d17461cf39a666d2303da9389892510006d110206bf7fdc8",
+  },
+  {
+    order: 4,
+    difficulty: "easy",
+    title: "Count Students Per Class",
+    points: 10,
+    promptMarkdown:
+      "Return class and the number of students in each class as total, ordered by class ascending.\n\nSchema: students(id, name, class)",
+    seedDataSql: String.raw`CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, class TEXT);
+INSERT INTO students VALUES
+(1,'Aman','10A'),
+(2,'Bhavna','10B'),
+(3,'Chetan','10A'),
+(4,'Divya','10B'),
+(5,'Esha','10A'),
+(6,'Farhan','10B');`,
+    expectedResultHash: "0fc4219f4aff180aba5169b4a4bd7549c244c2784f89efab7dc5a511e11a0cb3",
+  },
+  {
+    order: 5,
+    difficulty: "easy",
+    title: "Highest Paid Employee",
+    points: 10,
+    promptMarkdown:
+      "Return the name and salary of the employee with the highest salary.\n\nSchema: employees(id, name, dept, salary)",
+    seedDataSql: String.raw`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, dept TEXT, salary INTEGER);
+INSERT INTO employees VALUES
+(1,'Alice','Eng',90000),
+(2,'Bob','HR',60000),
+(3,'Carol','Eng',95000),
+(4,'Dave','Sales',70000),
+(5,'Eve','HR',62000);`,
+    expectedResultHash: "d8b9c9000700769b9d293ab3e1792fa0a0d346b96fba23cf29b017c1fc7ab740",
+  },
+  {
+    order: 6,
+    difficulty: "medium",
+    title: "Department Averages",
+    points: 20,
+    promptMarkdown:
+      "Return dept and the average salary as avg_salary for each department, but only for departments where the average salary is above 65000. Order by avg_salary descending.\n\nSchema: employees2(id, name, dept, salary)",
+    seedDataSql: String.raw`CREATE TABLE employees2 (id INTEGER PRIMARY KEY, name TEXT, dept TEXT, salary INTEGER);
+INSERT INTO employees2 VALUES
+(1,'Alice','Eng',90000),
+(2,'Bob','HR',60000),
+(3,'Carol','Eng',95000),
+(4,'Dave','Sales',70000),
+(5,'Eve','HR',62000),
+(6,'Frank','Sales',72000);`,
+    expectedResultHash: "64a9a74ed2ecac4eebc0bc88631b3f3309740c8d55c921037721876a7acb3f52",
+  },
+  {
+    order: 7,
+    difficulty: "medium",
+    title: "Orders With Customer Names",
+    points: 20,
+    promptMarkdown:
+      "Return order_id, customer name, and amount for all orders, ordered by order_id ascending.\n\nSchema: customers(id, name) and orders(order_id, customer_id, amount)",
+    seedDataSql: String.raw`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO customers VALUES (1,'Neha'),(2,'Rohit'),(3,'Simran');
+CREATE TABLE orders (order_id INTEGER PRIMARY KEY, customer_id INTEGER, amount INTEGER);
+INSERT INTO orders VALUES
+(101,1,500),
+(102,2,300),
+(103,1,700),
+(104,3,450);`,
+    expectedResultHash: "4c50bfc6775d8aeec174160d7956844a829b5a2a83c47b98e7208c2e89df14e4",
+  },
+  {
+    order: 8,
+    difficulty: "medium",
+    title: "Products Never Ordered",
+    points: 20,
+    promptMarkdown:
+      "Return the name of products that have never appeared in the sales table.\n\nSchema: products(id, name) and sales(id, product_id, qty)",
+    seedDataSql: String.raw`CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO products VALUES (1,'Pen'),(2,'Notebook'),(3,'Eraser'),(4,'Sharpener'),(5,'Ruler');
+CREATE TABLE sales (id INTEGER PRIMARY KEY, product_id INTEGER, qty INTEGER);
+INSERT INTO sales VALUES
+(1,1,10),
+(2,2,5),
+(3,1,3);`,
+    expectedResultHash: "4318128c33b3282ac03b911f19903c443198ab84c7f29dad4fe431c87ad718eb",
+  },
+  {
+    order: 9,
+    difficulty: "medium",
+    title: "Second Highest Score",
+    points: 20,
+    promptMarkdown:
+      "Return the second highest score from the table as a single column second_highest.\n\nSchema: scores(id, player, score)",
+    seedDataSql: String.raw`CREATE TABLE scores (id INTEGER PRIMARY KEY, player TEXT, score INTEGER);
+INSERT INTO scores VALUES
+(1,'Ravi',88),
+(2,'Sita',95),
+(3,'Gopal',95),
+(4,'Meena',80),
+(5,'Anil',90);`,
+    expectedResultHash: "784d8a37e24a84ad3a39dc290fc6ff4616d0562f1d5a958c2edeb7d92764f7d9",
+  },
+  {
+    order: 10,
+    difficulty: "medium",
+    title: "Category Wise Max Price",
+    points: 20,
+    promptMarkdown:
+      "Return category and the maximum price in that category as max_price, ordered by category ascending.\n\nSchema: items(id, category, price)",
+    seedDataSql: String.raw`CREATE TABLE items (id INTEGER PRIMARY KEY, category TEXT, price INTEGER);
+INSERT INTO items VALUES
+(1,'Electronics',1200),
+(2,'Electronics',2500),
+(3,'Furniture',800),
+(4,'Furniture',1500),
+(5,'Grocery',150),
+(6,'Grocery',90);`,
+    expectedResultHash: "b9a311ab29425bbb1a1b1de0ef7803f6788bf7564bb0f2a78bc7f45543739c83",
+  },
+  {
+    order: 11,
+    difficulty: "medium",
+    title: "Employees Earning Above Their Department Average",
+    points: 20,
+    promptMarkdown:
+      "Return name, dept, and salary of employees who earn more than the average salary of their own department. Order by name ascending.\n\nSchema: staff(id, name, dept, salary)",
+    seedDataSql: String.raw`CREATE TABLE staff (id INTEGER PRIMARY KEY, name TEXT, dept TEXT, salary INTEGER);
+INSERT INTO staff VALUES
+(1,'Aarav','Eng',90000),
+(2,'Bina','Eng',70000),
+(3,'Chirag','Eng',95000),
+(4,'Deepa','HR',60000),
+(5,'Esha','HR',65000);`,
+    expectedResultHash: "735f5dc565622239fc4d6b55c171b469fc45e914576efff976e15aef6cb18131",
+  },
+  {
+    order: 12,
+    difficulty: "hard",
+    title: "Top Scorer Per Subject",
+    points: 30,
+    promptMarkdown:
+      "For each subject, return the student with the highest marks in that subject. Return subject, student, marks, ordered by subject ascending. Assume no ties within a subject.\n\nSchema: exam(id, student, subject, marks)",
+    seedDataSql: String.raw`CREATE TABLE exam (id INTEGER PRIMARY KEY, student TEXT, subject TEXT, marks INTEGER);
+INSERT INTO exam VALUES
+(1,'Aisha','Math',88),
+(2,'Bilal','Math',95),
+(3,'Chetna','Science',77),
+(4,'Aisha','Science',91),
+(5,'Bilal','English',60),
+(6,'Chetna','English',85);`,
+    expectedResultHash: "f6bf8d9dfdf7e2e7545983bf6c2f9d46395251d15f35abcfe558e0b9f26b2904",
+  },
+  {
+    order: 13,
+    difficulty: "hard",
+    title: "Running Total of Sales",
+    points: 30,
+    promptMarkdown:
+      "Return sale_date, amount, and a running cumulative total as running_total, ordered by sale_date ascending.\n\nSchema: daily_sales(id, sale_date, amount)",
+    seedDataSql: String.raw`CREATE TABLE daily_sales (id INTEGER PRIMARY KEY, sale_date TEXT, amount INTEGER);
+INSERT INTO daily_sales VALUES
+(1,'2024-01-01',100),
+(2,'2024-01-02',150),
+(3,'2024-01-03',200),
+(4,'2024-01-04',50);`,
+    expectedResultHash: "9dda3796eac01bc3754c2290bfbdaca932e172e00c4613e5a2cb2577ab7ddd18",
+  },
+  {
+    order: 14,
+    difficulty: "hard",
+    title: "Departments With More Than One Employee Above 70000",
+    points: 30,
+    promptMarkdown:
+      "Return dept for departments having more than 1 employee with salary greater than 70000. Order by dept ascending.\n\nSchema: workers(id, name, dept, salary)",
+    seedDataSql: String.raw`CREATE TABLE workers (id INTEGER PRIMARY KEY, name TEXT, dept TEXT, salary INTEGER);
+INSERT INTO workers VALUES
+(1,'Ira','Eng',95000),
+(2,'Jatin','Eng',88000),
+(3,'Kabir','Eng',50000),
+(4,'Lata','Sales',75000),
+(5,'Manav','Sales',40000),
+(6,'Nisha','HR',30000);`,
+    expectedResultHash: "3d2dab3dab0cd6c403b6b10c45ff8792414aa74054b16c4e4f40a3aa988c1d01",
+  },
+  {
+    order: 15,
+    difficulty: "hard",
+    title: "Consecutive Login Streak",
+    points: 30,
+    promptMarkdown:
+      "A user's login is part of a 'streak' if they logged in on consecutive calendar days. Return the user and the length of their LONGEST streak of consecutive-day logins as longest_streak. Order by user ascending.\n\nSchema: logins(id, user, login_date) — login_date is TEXT in 'YYYY-MM-DD' format",
+    seedDataSql: String.raw`CREATE TABLE logins (id INTEGER PRIMARY KEY, user TEXT, login_date TEXT);
+INSERT INTO logins VALUES
+(1,'Zara','2024-01-01'),
+(2,'Zara','2024-01-02'),
+(3,'Zara','2024-01-03'),
+(4,'Zara','2024-01-05'),
+(5,'Yusuf','2024-01-01'),
+(6,'Yusuf','2024-01-02');`,
+    expectedResultHash: "e87162ec13f4bffacb78f83b2db2537c28dfd3933e9fec3589390829d8c40b55",
+  },
 ];
 
 export const seed = internalMutation({
