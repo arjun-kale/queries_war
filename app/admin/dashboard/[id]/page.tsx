@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Check, CircleAlert, Clock, Code, LoaderCircle, Shield, UserCheck, UserX } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, Clock, Code, LoaderCircle, Shield, ShieldCheck, ShieldX, UserCheck, UserX } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,11 @@ export default function ParticipantDetailPage({
 
   const submissions = useQuery(
     api.admin.participantSubmissions,
+    token && validSession === true ? { adminToken: token, participantId } : "skip",
+  );
+
+  const identityPhotoUrl = useQuery(
+    api.admin.participantIdentityPhotoUrl,
     token && validSession === true ? { adminToken: token, participantId } : "skip",
   );
 
@@ -193,6 +198,54 @@ export default function ParticipantDetailPage({
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Identity verification</CardTitle>
+              <CardDescription>
+                One-time photo captured at contest start, for dispute evidence only.
+              </CardDescription>
+            </div>
+            {participant.hasIdentityPhoto ? (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <ShieldCheck className="size-3.5" /> Verified
+              </Badge>
+            ) : participant.identityVerificationSkipped ? (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <ShieldX className="size-3.5" /> Skipped
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Pending</Badge>
+            )}
+          </CardHeader>
+          <CardContent>
+            {participant.hasIdentityPhoto ? (
+              identityPhotoUrl === undefined ? (
+                <p className="text-sm text-muted-foreground">Loading photo…</p>
+              ) : identityPhotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={identityPhotoUrl}
+                  alt={`Identity verification photo for ${participant.name}`}
+                  className="max-h-80 rounded-lg border object-contain"
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Photo could not be loaded (it may have been removed from storage).
+                </p>
+              )
+            ) : participant.identityVerificationSkipped ? (
+              <p className="text-sm text-muted-foreground">
+                This participant skipped identity verification (camera unavailable or denied).
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This participant has not reached the verification step yet.
+              </p>
+            )}
           </CardContent>
         </Card>
 

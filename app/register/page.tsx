@@ -65,11 +65,29 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       if (!contest) throw new Error("Registration is not open right now.");
-      const { participantId, participantToken } = await createParticipant({
-        contestId: contest._id,
-        name,
-        email,
-      });
+
+      // Registration can transiently contend with other concurrent
+      // registrations (rate-limit counters share a small number of shards).
+      // That contention resolves within milliseconds, so retry a couple of
+      // times before surfacing an error — this is expected under a burst of
+      // simultaneous sign-ups, not a real failure.
+      let lastError: unknown;
+      let result: { participantId: Id<"participants">; participantToken: string } | undefined;
+      for (let attempt = 0; attempt < 3 && !result; attempt++) {
+        try {
+          result = await createParticipant({ contestId: contest._id, name, email });
+        } catch (attemptError) {
+          lastError = attemptError;
+          const message = attemptError instanceof Error ? attemptError.message : "";
+          const isTransientConflict =
+            message.includes("OptimisticConcurrencyControlFailure") ||
+            message.includes("changed while this mutation was being run");
+          if (!isTransientConflict || attempt === 2) throw attemptError;
+          await new Promise((resolve) => setTimeout(resolve, 150 + Math.random() * 250));
+        }
+      }
+      if (!result) throw lastError;
+      const { participantId, participantToken } = result;
 
       window.localStorage.setItem(PARTICIPANT_KEY, participantId);
       window.localStorage.setItem(PARTICIPANT_TOKEN_KEY, participantToken);

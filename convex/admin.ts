@@ -23,6 +23,8 @@ const liveScoreValidator = v.object({
   isDisqualified: v.boolean(),
   tabSwitchCount: v.number(),
   pasteAttemptCount: v.number(),
+  hasIdentityPhoto: v.boolean(),
+  identityVerificationSkipped: v.boolean(),
   rank: v.number(),
 });
 
@@ -226,6 +228,8 @@ export const liveScores = query({
       isDisqualified: boolean;
       tabSwitchCount: number;
       pasteAttemptCount: number;
+      hasIdentityPhoto: boolean;
+      identityVerificationSkipped: boolean;
     }> = [];
 
     for (const participant of participants) {
@@ -263,6 +267,8 @@ export const liveScores = query({
         isDisqualified: Boolean(participant.isDisqualified),
         tabSwitchCount: participant.tabSwitchCount ?? 0,
         pasteAttemptCount: participant.pasteAttemptCount ?? 0,
+        hasIdentityPhoto: participant.identityPhotoStorageId !== undefined,
+        identityVerificationSkipped: Boolean(participant.identityVerificationSkipped),
       });
     }
 
@@ -293,6 +299,8 @@ export const participantDetail = query({
       isDisqualified: v.optional(v.boolean()),
       totalScore: v.number(),
       submissionCount: v.number(),
+      hasIdentityPhoto: v.boolean(),
+      identityVerificationSkipped: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -328,7 +336,22 @@ export const participantDetail = query({
       isDisqualified: participant.isDisqualified,
       totalScore: totalScore ?? 0,
       submissionCount: submissionCount ?? 0,
+      hasIdentityPhoto: participant.identityPhotoStorageId !== undefined,
+      identityVerificationSkipped: Boolean(participant.identityVerificationSkipped),
     };
+  },
+});
+
+export const participantIdentityPhotoUrl = query({
+  args: { adminToken: v.string(), participantId: v.id("participants") },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.adminToken);
+    const participant = await ctx.db.get("participants", args.participantId);
+    if (!participant || participant.identityPhotoStorageId === undefined) {
+      return null;
+    }
+    return await ctx.storage.getUrl(participant.identityPhotoStorageId);
   },
 });
 

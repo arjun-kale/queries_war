@@ -45,6 +45,8 @@ export default defineSchema({
     totalScore: v.optional(v.number()),
     submissionCount: v.optional(v.number()),
     lastSubmittedAt: v.optional(v.number()),
+    identityPhotoStorageId: v.optional(v.id("_storage")),
+    identityVerificationSkipped: v.optional(v.boolean()),
   }).index("by_contest", ["contestId"]).index("by_contest_email", ["contestId", "email"]),
 
   submissions: defineTable({

@@ -28,6 +28,7 @@ import { ContestTimer } from "@/components/contest/ContestTimer";
 import { QuestionSidebar, type QuestionStatus } from "@/components/contest/QuestionSidebar";
 import { ResultTable, type FixtureSummary } from "@/components/contest/ResultTable";
 import { SchemaDrawer } from "@/components/contest/SchemaDrawer";
+import { IdentityVerification } from "@/components/contest/IdentityVerification";
 import { useToast } from "@/components/ui/toast";
 
 const PARTICIPANT_KEY = "queries-war-participant-id";
@@ -377,6 +378,16 @@ export default function ContestPage() {
           </div>
         </Card>
       </main>
+    );
+  }
+
+  if (
+    participantToken &&
+    !participant.hasIdentityPhoto &&
+    !participant.identityVerificationSkipped
+  ) {
+    return (
+      <IdentityVerification participantId={participant._id} participantToken={participantToken} />
     );
   }
 

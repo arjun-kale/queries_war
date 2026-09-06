@@ -374,4 +374,73 @@ describe("Queries War - Core Test Suite", () => {
     });
     expect(unauthorizedSubs).toEqual([]);
   });
+
+  test("Identity verification: wrong token is rejected, skip is recorded, admin sees no-photo state", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const adminToken = "identity-test-admin-token";
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("adminSessions", {
+        token: adminToken,
+        expiresAt: now + 3600_000,
+      });
+    });
+
+    const contestId = await t.run(async (ctx) => {
+      return await ctx.db.insert("contests", {
+        title: "Identity Test Contest",
+        startTime: now - 1000,
+        endTime: now + 3600_000,
+        durationSeconds: 3600,
+        isActive: true,
+        leaderboardVisible: true,
+      });
+    });
+
+    const { participantId, participantToken } = await t.mutation(
+      api.participants.create,
+      {
+        contestId,
+        name: "Identity Tester",
+        email: "identity-tester@example.com",
+      },
+    );
+
+    // Wrong token cannot generate an upload URL.
+    await expect(
+      t.mutation(api.participants.generateIdentityPhotoUploadUrl, {
+        participantId,
+        participantToken: "wrong-token",
+      }),
+    ).rejects.toThrow("Participant session is invalid.");
+
+    // Wrong token cannot skip verification either.
+    await expect(
+      t.mutation(api.participants.skipIdentityVerification, {
+        participantId,
+        participantToken: "wrong-token",
+      }),
+    ).rejects.toThrow("Participant session is invalid.");
+
+    // No photo yet: admin query returns null.
+    const noPhotoUrl = await t.query(api.admin.participantIdentityPhotoUrl, {
+      adminToken,
+      participantId,
+    });
+    expect(noPhotoUrl).toBeNull();
+
+    // Valid token can skip verification.
+    await t.mutation(api.participants.skipIdentityVerification, {
+      participantId,
+      participantToken,
+    });
+
+    const participant = await t.query(api.participants.get, {
+      participantId,
+      participantToken,
+    });
+    expect(participant?.hasIdentityPhoto).toBe(false);
+    expect(participant?.identityVerificationSkipped).toBe(true);
+  });
 });

@@ -313,6 +313,7 @@ export default function AdminPage() {
                           <th className="p-3">Subs</th>
                           <th className="p-3">Tab switches</th>
                           <th className="p-3">Paste attempts</th>
+                          <th className="p-3">ID check</th>
                           <th className="p-3">Status</th>
                           <th className="p-3 text-right">Actions</th>
                         </tr>
@@ -349,6 +350,15 @@ export default function AdminPage() {
                                 </Badge>
                               ) : (
                                 <span className="text-muted-foreground">0</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              {row.hasIdentityPhoto ? (
+                                <Badge variant="secondary">Verified</Badge>
+                              ) : row.identityVerificationSkipped ? (
+                                <Badge variant="outline">Skipped</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">Pending</span>
                               )}
                             </td>
                             <td className="p-3">
