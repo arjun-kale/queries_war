@@ -531,7 +531,7 @@ export default function ContestPage() {
           </Card>
 
           {/* Interactive Schema & Sample Data Drawer */}
-          <SchemaDrawer seedSql={question.seedDataSql} />
+          <SchemaDrawer key={question._id} seedSql={question.seedDataSql} />
 
           {/* Submission Feedback Banner */}
           {submissionFeedback && (

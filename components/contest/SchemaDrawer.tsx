@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export function SchemaDrawer({ seedSql }: { seedSql: string }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const [tables, setTables] = useState<TableSchema[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>();
 
